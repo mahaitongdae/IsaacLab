@@ -13,7 +13,7 @@ from omni.isaac.lab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on running the cartpole RL environment.")
-parser.add_argument("--num_envs", type=int, default=2, help="Number of environments to spawn.")
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -40,6 +40,7 @@ from omni.isaac.lab.managers import ObservationTermCfg as ObsTerm
 from omni.isaac.lab.managers import SceneEntityCfg
 from omni.isaac.lab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import ObservationsCfg
 from omni.isaac.lab.utils.math import euler_xyz_from_quat
+from omni.isaac.lab_tasks.manager_based.locomotion.velocity.config.go2.go2_helper import *
 
 # class UnitreeGo2FlatEnvCfg(UnitreeGo2RoughEnvCfg):
 #     def __post_init__(self):
@@ -64,14 +65,15 @@ class myEnvConfig(UnitreeGo2FlatEnvCfg):
     def __post_init__(self):
         
         super().__post_init__()
-        self.observations.policy.base_lin_vel = None
-        self.observations.policy.base_ang_vel = None
-        self.observations.policy.projected_gravity = None #ObsTerm(func=mdp.root_quat_w)
+        self.observations.policy.base_lin_vel = ObsTerm(func=mdp.root_lin_vel_w)
+        self.observations.policy.base_ang_vel = ObsTerm(func=mdp.root_ang_vel_w)
+        # self.observations.policy.projected_gravity = None #ObsTerm(func=mdp.root_quat_w)
         self.observations.policy.velocity_commands = None
-        self.observations.policy.joint_pos = None #ObsTerm(func=mdp.joint_pos)
-        self.observations.policy.joint_vel = None
-        # self.observations.policy.actions = None
-        self.actions.joint_pos.scale = 0.25
+        # self.observations.policy.joint_pos = None #ObsTerm(func=mdp.joint_pos)
+        # self.observations.policy.joint_vel = None
+        self.observations.policy.actions = None
+        # self.actions.joint_pos = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=[".*"], 
+        #                                                             offset=self.env)
 
 
 def main():
@@ -89,18 +91,24 @@ def main():
             # reset
             if count % 300 == 0:
                 count = 0
-                env.reset()
+                obs, _ = env.reset()
                 print("-" * 80)
                 print("[INFO]: Resetting environment...")
             # sample random actions
-            joint_efforts = torch.zeros_like(env.action_manager.action)
+            # joint_efforts = torch.zeros_like(env.action_manager.action)
             # joint_efforts[:, 10] = torch.ones((2,))
             # joint_efforts[:, 11] = torch.ones((2,))
             # step the environment
-            obs, rew, terminated, truncated, info = env.step(joint_efforts)
+            joint_angle = obs["policy"][:, 9:21].clone().cpu()
+            obs = obs["policy"]
+            rel_action = get_action(obs.cpu().numpy())
+            joint_pos = joint_angle + rel_action - torch.from_numpy(STAND)
+            print(f"[Env 0 step {count % 300}]: Act: ", rel_action)
+            obs, rew, terminated, truncated, info = env.step(joint_pos)
+            
             # print current orientation of pole
             # print(f"[Env 0 step {count % 300}]: Obs: ",*[ s / torch.pi * 180 for s in  euler_xyz_from_quat(obs["policy"]) ])
-            print(f"[Env 0 step {count % 300}]: Obs: ",obs["policy"])
+            
             # update counter
             count += 1
 
