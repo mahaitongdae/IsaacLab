@@ -1,6 +1,6 @@
 import numpy as np
 import onnxruntime as ort
-onnx_model_path = '/home/haitong/PycharmProjects/google-research google-research master value_dice/save/value_dice/20240910-UnitreeGo2/160320-add_data_repr=0,algo=value_dice,env_name=UnitreeGo2,num_traj=1,repr_dim=512,seed=42-/policy_20000.onnx'
+onnx_model_path = '/home/haitong/PycharmProjects/google-research google-research master value_dice/save/bc/20240910-UnitreeGo2/165459-add_data_repr=0,algo=bc,env_name=UnitreeGo2,num_traj=1,repr_dim=512,seed=42-/policy_10000.onnx'
 session = ort.InferenceSession(onnx_model_path)
 input_name = session.get_inputs()[0].name
 LegID = {
@@ -67,6 +67,12 @@ STAND = np.array([
         -0.0, 0.8, -1.5,
         -0.0, 0.8, -1.5,
         -0.0, 0.8, -1.5
+    ])
+
+ISAAC_STAND = np.array([
+        0.1,-0.1,-0.1,-0.1,
+        0.8, 0.8, 1.0, 1.0,
+        -1.5,-1.5,-1.5,-1.5
     ])
 
 def get_action(input_data):

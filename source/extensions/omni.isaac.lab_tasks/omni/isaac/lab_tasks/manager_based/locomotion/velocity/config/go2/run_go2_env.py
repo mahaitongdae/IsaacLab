@@ -69,12 +69,17 @@ class myEnvConfig(UnitreeGo2FlatEnvCfg):
         self.observations.policy.base_ang_vel = ObsTerm(func=mdp.root_ang_vel_w)
         # self.observations.policy.projected_gravity = None #ObsTerm(func=mdp.root_quat_w)
         self.observations.policy.velocity_commands = None
-        # self.observations.policy.joint_pos = None #ObsTerm(func=mdp.joint_pos)
+        self.observations.policy.joint_pos = ObsTerm(func=mdp.joint_pos)
         # self.observations.policy.joint_vel = None
         self.observations.policy.actions = None
+        self.actions.joint_pos.scale = 1
         # self.actions.joint_pos = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=[".*"], 
         #                                                             offset=self.env)
+        self.decimation = 2
 
+ISAAC_OFFSET = torch.tensor([
+
+])
 
 def main():
     """Main function."""
@@ -95,15 +100,15 @@ def main():
                 print("-" * 80)
                 print("[INFO]: Resetting environment...")
             # sample random actions
-            # joint_efforts = torch.zeros_like(env.action_manager.action)
-            # joint_efforts[:, 10] = torch.ones((2,))
-            # joint_efforts[:, 11] = torch.ones((2,))
+            # joint_pos = torch.zeros_like(env.action_manager.action)
             # step the environment
             joint_angle = obs["policy"][:, 9:21].clone().cpu()
             obs = obs["policy"]
             rel_action = get_action(obs.cpu().numpy())
-            joint_pos = joint_angle + rel_action - torch.from_numpy(STAND)
-            print(f"[Env 0 step {count % 300}]: Act: ", rel_action)
+            isaac_rel_action = convertJointOrderGo2ToIsaac(rel_action)
+            joint_pos = joint_angle + isaac_rel_action - torch.from_numpy(ISAAC_STAND)
+            # print(f"[Env 0 step {count % 300}]: Act: ", rel_action)
+            print(f"[Env 0 step {count % 300}]: Obs: ", joint_pos)
             obs, rew, terminated, truncated, info = env.step(joint_pos)
             
             # print current orientation of pole

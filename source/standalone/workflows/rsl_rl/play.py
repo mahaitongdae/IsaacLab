@@ -136,6 +136,7 @@ def main():
             # agent stepping
             actions = policy(obs)
             # env stepping
+            print("Obs :", obs)
             obs, _, _, _ = env.step(actions)
         if args_cli.video:
             timestep += 1
