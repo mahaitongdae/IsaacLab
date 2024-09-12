@@ -22,7 +22,7 @@ parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default='Isaac-Velocity-Flat-Unitree-Go2-v0', help="Name of the task.")
+parser.add_argument("--task", type=str, default='Isaac-Velocity-Rough-Unitree-Go2-v0', help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -72,7 +72,7 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 0.0), lin_vel_y=(0.3, 0.3), ang_vel_z=(-1.0, 1.0), heading=(0.0, 0.0) # (-math.pi, math.pi)
+            lin_vel_x=(0.8, 0.8), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0), heading=(0.0, 0.0) # (-math.pi, math.pi)
         ),
     )
 
@@ -136,7 +136,8 @@ def main():
             # agent stepping
             actions = policy(obs)
             # env stepping
-            print("Obs :", obs)
+            print("Obs :", obs[:, :3])
+            print(actions)
             obs, _, _, _ = env.step(actions)
         if args_cli.video:
             timestep += 1

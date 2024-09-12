@@ -11,6 +11,11 @@ from omni.isaac.lab_tasks.manager_based.locomotion.velocity.velocity_env_cfg imp
 # Pre-defined configs
 ##
 from omni.isaac.lab_assets.unitree import UNITREE_GO2_CFG  # isort: skip
+from pxr import PhysxSchema
+
+# physxSceneAPI = PhysxSchema.PhysxSceneAPI.Apply(physics_scene_prim)
+# physxSceneAPI.CreateGpuTempBufferCapacityAttr(16 * 1024 * 1024 * 2)        
+# physxSceneAPI.CreateGpuHeapCapacityAttr(64 * 1024 * 1024 * 2)
 
 
 @configclass
@@ -30,7 +35,7 @@ class UnitreeGo2RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.actions.joint_pos.scale = 0.25
 
         # event
-        self.events.push_robot = None
+        # self.events.push_robot = None
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 3.0)
         self.events.add_base_mass.params["asset_cfg"].body_names = "base"
         self.events.base_external_force_torque.params["asset_cfg"].body_names = "base"

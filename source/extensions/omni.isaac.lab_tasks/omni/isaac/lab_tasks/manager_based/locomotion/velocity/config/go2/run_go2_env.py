@@ -31,7 +31,8 @@ import torch
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
 from omni.isaac.lab_tasks.manager_based.classic.cartpole.cartpole_env_cfg import CartpoleEnvCfg
-from omni.isaac.lab_tasks.manager_based.locomotion.velocity.config.go2.flat_env_cfg import UnitreeGo2FlatEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.velocity.config.go2.flat_env_cfg import UnitreeGo2FlatEnvCfg, UnitreeGo2RoughEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.velocity.config.anymal_c.flat_env_cfg import AnymalCFlatEnvCfg
 from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from omni.isaac.lab.utils import configclass
 import omni.isaac.lab_tasks.manager_based.locomotion.velocity.mdp as mdp
@@ -65,14 +66,21 @@ class myEnvConfig(UnitreeGo2FlatEnvCfg):
     def __post_init__(self):
         
         super().__post_init__()
-        self.observations.policy.base_lin_vel = ObsTerm(func=mdp.root_lin_vel_w)
-        self.observations.policy.base_ang_vel = ObsTerm(func=mdp.root_ang_vel_w)
-        # self.observations.policy.projected_gravity = None #ObsTerm(func=mdp.root_quat_w)
+        # self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
+        self.observations.policy.base_lin_vel = None # ObsTerm(func=mdp.root_lin_vel_w)
+        self.observations.policy.base_ang_vel = None # ObsTerm(func=mdp.root_ang_vel_w)
+        self.observations.policy.projected_gravity = None #ObsTerm(func=mdp.root_quat_w)
         self.observations.policy.velocity_commands = None
-        self.observations.policy.joint_pos = ObsTerm(func=mdp.joint_pos)
-        # self.observations.policy.joint_vel = None
+        self.observations.policy.joint_pos = None # ObsTerm(func=mdp.joint_pos)
+        self.observations.policy.joint_vel = None
         self.observations.policy.actions = None
-        self.actions.joint_pos.scale = 1
+        self.actions.joint_pos.scale = 0.25
+        # self.observations.policy.height_scan = ObsTerm(
+        #     func=mdp.height_scan,
+        #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+        #     noise=Unoise(n_min=-0.1, n_max=0.1),
+        #     clip=(-1.0, 1.0),
+        # )
         # self.actions.joint_pos = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=[".*"], 
         #                                                             offset=self.env)
         self.decimation = 2
@@ -84,7 +92,7 @@ ISAAC_OFFSET = torch.tensor([
 def main():
     """Main function."""
     # create environment configuration
-    env_cfg = myEnvConfig()
+    env_cfg = UnitreeGo2FlatEnvCfg()
     env_cfg.scene.num_envs = args_cli.num_envs
     # setup RL environment
     env = ManagerBasedRLEnv(cfg=env_cfg)
@@ -100,16 +108,16 @@ def main():
                 print("-" * 80)
                 print("[INFO]: Resetting environment...")
             # sample random actions
-            # joint_pos = torch.zeros_like(env.action_manager.action)
+            joint_pos = torch.zeros_like(env.action_manager.action)
             # step the environment
-            joint_angle = obs["policy"][:, 9:21].clone().cpu()
-            obs = obs["policy"]
-            rel_action = get_action(obs.cpu().numpy())
-            isaac_rel_action = convertJointOrderGo2ToIsaac(rel_action)
-            joint_pos = joint_angle + isaac_rel_action - torch.from_numpy(ISAAC_STAND)
+            # joint_angle = obs["policy"].clone().cpu() # [:, 9:21]
+            # obs = obs["policy"]
+            # joint_pos = get_action_rl(obs.cpu().numpy())
+            # isaac_rel_action = convertJointOrderGo2ToIsaac(rel_action)
+            # joint_pos = joint_angle + isaac_rel_action - torch.from_numpy(ISAAC_STAND)
             # print(f"[Env 0 step {count % 300}]: Act: ", rel_action)
-            print(f"[Env 0 step {count % 300}]: Obs: ", joint_pos)
-            obs, rew, terminated, truncated, info = env.step(joint_pos)
+            print(f"[Env 0 step {count % 300}]: Obs: ", obs['policy'].shape)
+            obs, rew, terminated, truncated, info = env.step(joint_pos) # torch.from_numpy(joint_pos)
             
             # print current orientation of pole
             # print(f"[Env 0 step {count % 300}]: Obs: ",*[ s / torch.pi * 180 for s in  euler_xyz_from_quat(obs["policy"]) ])

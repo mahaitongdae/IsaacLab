@@ -1,6 +1,6 @@
 import numpy as np
 import onnxruntime as ort
-onnx_model_path = '/home/haitong/PycharmProjects/google-research google-research master value_dice/save/bc/20240910-UnitreeGo2/165459-add_data_repr=0,algo=bc,env_name=UnitreeGo2,num_traj=1,repr_dim=512,seed=42-/policy_10000.onnx'
+onnx_model_path = '/home/naliseas-workstation/IsaacLab/logs/rsl_rl/unitree_go2_flat/2024-09-11_13-52-10/exported/policy_1800.onnx'
 session = ort.InferenceSession(onnx_model_path)
 input_name = session.get_inputs()[0].name
 LegID = {
@@ -86,6 +86,21 @@ def get_action(input_data):
 
     # Run the model on the input data
     output = session.run(None, {input_name: go2_input})
+
+    # Return the results
+    return output[0]
+
+def get_action_rl(input_data):
+
+    # go2_input = np.empty_like(input_data)
+    # go2_input[:, :9] = input_data[:, :9]
+    # go2_input[:, 9:21] = convertJointOrderIsaacToGo2(input_data[:, 9:21]) - STAND
+    # go2_input[:, 21:33] = convertJointOrderIsaacToGo2(input_data[:, 21:33])
+    if not isinstance(input_data, np.ndarray):
+        raise ValueError("Input data must be a numpy array")
+
+    # Run the model on the input data
+    output = session.run(None, {input_name: input_data})
 
     # Return the results
     return output[0]
