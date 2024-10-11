@@ -11,6 +11,8 @@ from collections.abc import Sequence
 
 from omni.isaac.lab_assets.cartpole import CARTPOLE_CFG
 
+import gymnasium as gym
+
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
@@ -113,6 +115,33 @@ class CartpoleEnv(DirectRLEnv):
             self.reset_terminated,
         )
         return total_reward
+
+
+    def _configure_gym_env_spaces(self):
+        """Configure the action and observation spaces for the Gym environment."""
+        # observation space (unbounded since we don't impose any limits)
+        self.num_actions = self.cfg.num_actions
+        self.num_observations = self.cfg.num_observations
+        self.num_states = self.cfg.num_states
+
+        # set up spaces
+        self.single_observation_space = gym.spaces.Dict()
+        
+        INF = 100000
+        
+        self.single_observation_space["policy"] = gym.spaces.Box(
+            low=-INF, high=INF, shape=(self.num_observations,)
+        )
+        self.single_action_space = gym.spaces.Box(low=-INF, high=INF, shape=(self.num_actions,))
+
+        # batch the spaces for vectorized environments
+        self.observation_space = gym.vector.utils.batch_space(self.single_observation_space["policy"], self.num_envs)
+        self.action_space = gym.vector.utils.batch_space(self.single_action_space, self.num_envs)
+
+        # optional state space for asymmetric actor-critic architectures
+        if self.num_states > 0:
+            self.single_observation_space["critic"] = gym.spaces.Box(low=-INF, high=INF, shape=(self.num_states,))
+            self.state_space = gym.vector.utils.batch_space(self.single_observation_space["critic"], self.num_envs)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.joint_pos = self.cartpole.data.joint_pos

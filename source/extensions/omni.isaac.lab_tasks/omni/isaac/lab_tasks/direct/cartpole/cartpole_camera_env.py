@@ -125,20 +125,22 @@ class CartpoleCameraEnv(DirectRLEnv):
         self.num_observations = self.cfg.num_observations
         self.num_states = self.cfg.num_states
 
+        INF = 10000
+        
         # set up spaces
         self.single_observation_space = gym.spaces.Dict()
         self.single_observation_space["policy"] = gym.spaces.Box(
-            low=-np.inf,
-            high=np.inf,
+            low=-INF,
+            high=INF,
             shape=(self.cfg.tiled_camera.height, self.cfg.tiled_camera.width, self.cfg.num_channels),
         )
         if self.num_states > 0:
             self.single_observation_space["critic"] = gym.spaces.Box(
-                low=-np.inf,
-                high=np.inf,
+                low=-INF,
+                high=INF,
                 shape=(self.cfg.tiled_camera.height, self.cfg.tiled_camera.width, self.cfg.num_channels),
             )
-        self.single_action_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_actions,))
+        self.single_action_space = gym.spaces.Box(low=-INF, high=INF, shape=(self.num_actions,))
 
         # batch the spaces for vectorized environments
         self.observation_space = gym.vector.utils.batch_space(self.single_observation_space, self.num_envs)
