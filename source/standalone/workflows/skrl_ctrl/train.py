@@ -20,7 +20,7 @@ from ctrlsac_agent import CTRLSACAgent
 set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Cartpole-Direct-v0", num_envs=64)
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Direct-v0", num_envs=1)
 env = wrap_env(env)
 
 device = env.device
@@ -125,9 +125,9 @@ cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": dev
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = 80
 cfg["experiment"]["checkpoint_interval"] = 800
-cfg["experiment"]["directory"] = "runs/torch/Cartpole"
+cfg["experiment"]["directory"] = "runs/torch/Quadcopter"
 cfg['use_feature_target'] = True
-cfg['extra_feature_steps'] = 1
+cfg['extra_feature_steps'] = 3
 
 
 
@@ -139,8 +139,6 @@ agent = CTRLSACAgent(
             action_space=env.action_space,
             device=device
         )
-agent.load("/home/anaveen/Documents/research_ws/IsaacLab/runs/torch/Cartpole/24-10-10_11-57-27-169344_CTRLSACAgent/checkpoints/best_agent.pt")
-
 # configure and instantiate the RL trainer
 cfg_trainer = {"timesteps": 160000, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)

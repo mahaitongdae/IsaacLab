@@ -102,7 +102,7 @@ class CTRLSACAgent(SAC):
                 z_phi, _, _ = self.frozen_phi({"states": sampled_states, "actions": sampled_actions}, role = "feature")
                 z_phi_next, _, _ = self.frozen_phi({"states": sampled_next_states, "actions": next_actions}, role = "next_feature")
 
-            next_qs, _, _ = self.target_critic_1.act({"z_phi": z_phi_next}, role="target_critic")
+            next_qs, _, _ = self.target_critic_1({"z_phi": z_phi_next}, role="target_critic")
             next_q = torch.min(next_qs[0], next_qs[1]) - self._entropy_coefficient * next_log_prob
             target_q = sampled_rewards + sampled_dones.logical_not() * self._discount_factor * next_q 
             

@@ -50,7 +50,7 @@ class Critic(DeterministicMixin, Model):
 
 
 # load and wrap the Isaac Lab environment
-env = load_isaaclab_env(task_name="Isaac-Cartpole-Direct-v0", num_envs=64)
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1)
 env = wrap_env(env)
 
 device = env.device
@@ -75,23 +75,23 @@ models["target_critic_2"] = Critic(env.observation_space, env.action_space, devi
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
 cfg = SAC_DEFAULT_CONFIG.copy()
 cfg["gradient_steps"] = 1
-cfg["batch_size"] = 256
+cfg["batch_size"] = 1024
 cfg["discount_factor"] = 0.99
 cfg["polyak"] = 0.005
 cfg["actor_learning_rate"] = 5e-4
 cfg["critic_learning_rate"] = 5e-4
-cfg["random_timesteps"] = 80
-cfg["learning_starts"] = 80
+cfg["random_timesteps"] = 800
+cfg["learning_starts"] = 800
 cfg["grad_norm_clip"] = 0
 cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 5e-3
 cfg["initial_entropy_value"] = 1.0
-cfg["state_preprocessor"] = RunningStandardScaler
-cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
+# cfg["state_preprocessor"] = RunningStandardScaler
+# cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = 800
 cfg["experiment"]["checkpoint_interval"] = 8000
-cfg["experiment"]["directory"] = "runs/torch/Cartpole"
+cfg["experiment"]["directory"] = "runs/torch/QuadCopter"
 
 agent = SAC(models=models,
             memory=memory,
@@ -103,10 +103,10 @@ agent = SAC(models=models,
 
 # configure and instantiate the RL trainer
 cfg_trainer = {"timesteps": 160000, "headless": True}
-agent.load("/home/anaveen/Documents/research_ws/IsaacLab/runs/torch/Cartpole/24-10-10_15-31-21-899950_SAC/checkpoints/best_agent.pt")
+# agent.load("/home/anaveen/Documents/research_ws/IsaacLab/runs/torch/Cartpole/24-10-10_15-31-21-899950_SAC/checkpoints/best_agent.pt")
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 
 
 # start training
-trainer.eval()
+trainer.train()

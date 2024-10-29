@@ -130,8 +130,8 @@ class CartpoleCameraEnv(DirectRLEnv):
         # set up spaces
         self.single_observation_space = gym.spaces.Dict()
         self.single_observation_space["policy"] = gym.spaces.Box(
-            low=-INF,
-            high=INF,
+            low=-1,
+            high=1,
             shape=(self.cfg.tiled_camera.height, self.cfg.tiled_camera.width, self.cfg.num_channels),
         )
         if self.num_states > 0:

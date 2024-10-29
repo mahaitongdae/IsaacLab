@@ -76,6 +76,8 @@ class DiagGaussianActor(GaussianMixin, Model):
     self.trunk = mlp(observation_space.shape[0], hidden_dim, 2 * action_space.shape[0],
                             hidden_depth)
     self.apply(weight_init)
+    
+    self.tr = TanhTransform()
 
   def compute(self, inputs, role):
     mu, log_std = self.trunk(inputs["states"]).chunk(2, dim=-1)
@@ -85,6 +87,9 @@ class DiagGaussianActor(GaussianMixin, Model):
     log_std_min, log_std_max = self.log_std_bounds
     log_std = log_std_min + 0.5 * (log_std_max - log_std_min) * (log_std +
                                                                   1)
+    
+#    mu = self.tr(mu)
+    
     return mu, log_std, {}
   
 
@@ -129,10 +134,12 @@ class DiagGaussianActor(GaussianMixin, Model):
 
         # sample using the reparameterization trick
         actions = self._distribution.rsample()
+        actions = self.tr(actions)
 
         # clip actions
         if self._clip_actions:
             actions = torch.clamp(actions, min=self._clip_actions_min, max=self._clip_actions_max)
+        # actions = 
 
         # log of the probability density function
         log_prob = self._distribution.log_prob(inputs.get("taken_actions", actions))
