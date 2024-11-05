@@ -120,8 +120,8 @@ cfg["grad_norm_clip"] = 0
 cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 5e-3
 cfg["initial_entropy_value"] = 1.0
-cfg["state_preprocessor"] = RunningStandardScaler
-cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
+# cfg["state_preprocessor"] = RunningStandardScaler
+# cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = 80
 cfg["experiment"]["checkpoint_interval"] = 800

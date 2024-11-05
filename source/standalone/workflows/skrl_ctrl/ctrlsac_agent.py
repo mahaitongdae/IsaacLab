@@ -150,7 +150,7 @@ class CTRLSACAgent(SAC):
         # entropy learning
         if self._learn_entropy:
             # compute entropy loss
-            entropy_loss = -(self.log_entropy_coefficient * (log_prob + self._target_entropy).detach()).mean()
+            entropy_loss = -(self.log_entropy_coefficient * (log_prob + self._target_entropy)).mean()
 
             # optimization step (entropy)
             self.entropy_optimizer.zero_grad()
@@ -158,7 +158,7 @@ class CTRLSACAgent(SAC):
             self.entropy_optimizer.step()
 
             # compute entropy coefficient
-            self._entropy_coefficient = torch.exp(self.log_entropy_coefficient.detach())
+            self._entropy_coefficient = torch.exp(self.log_entropy_coefficient)
 
         return {
             'actor_loss': actor_loss,
@@ -256,8 +256,8 @@ class CTRLSACAgent(SAC):
         """
         for _ in range(self.extra_feature_steps+1):
             sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones = self.memory.sample(names=self._tensors_names, batch_size=self._batch_size)[0]
-            sampled_states = self._state_preprocessor(sampled_states, train=True)
-            sampled_next_states = self._state_preprocessor(sampled_next_states, train=True)
+            # sampled_states = self._state_preprocessor(sampled_states, train=True)
+            # sampled_next_states = self._state_preprocessor(sampled_next_states, train=True)
 
             feature_loss = self.feature_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
 

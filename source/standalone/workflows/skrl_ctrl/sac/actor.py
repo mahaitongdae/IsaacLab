@@ -88,7 +88,7 @@ class DiagGaussianActor(GaussianMixin, Model):
     log_std = log_std_min + 0.5 * (log_std_max - log_std_min) * (log_std +
                                                                   1)
     
-#    mu = self.tr(mu)
+  #  mu = self.tr(mu)
     
     return mu, log_std, {}
   
@@ -142,7 +142,7 @@ class DiagGaussianActor(GaussianMixin, Model):
         # actions = 
 
         # log of the probability density function
-        log_prob = self._distribution.log_prob(inputs.get("taken_actions", actions))
+        log_prob = self._distribution.log_prob(inputs.get("taken_actions", torch.arctanh(actions)))
         if self._reduction is not None:
             log_prob = self._reduction(log_prob, dim=-1)
         if log_prob.dim() != actions.dim():

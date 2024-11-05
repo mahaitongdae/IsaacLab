@@ -150,8 +150,8 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    lin_vel_reward_scale = -0.05
-    ang_vel_reward_scale = -0.1
+    lin_vel_reward_scale = -0.5
+    ang_vel_reward_scale = -1.0
     distance_to_trajectory_reward_scale = 15.0
 
 
