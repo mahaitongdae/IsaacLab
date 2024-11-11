@@ -48,9 +48,9 @@ class CTRLSACAgent(SAC):
         self.use_feature_target = cfg['use_feature_target']
         self.extra_feature_steps = cfg['extra_feature_steps']
 
-        if self.use_feature_target:
-            self.phi_target = copy.deepcopy(self.phi)
-            self.frozen_phi_target = copy.deepcopy(self.frozen_phi)
+        # if self.use_feature_target:
+        #     self.phi_target = copy.deepcopy(self.phi)
+        #     self.frozen_phi_target = copy.deepcopy(self.frozen_phi)
 
 
         self.feature_optimizer = torch.optim.Adam(
@@ -58,7 +58,7 @@ class CTRLSACAgent(SAC):
             weight_decay=cfg['weight_decay'], lr=cfg['feature_learning_rate'])
 
         self.checkpoint_modules["phi"] = self.phi
-        self.checkpoint_modules["frozen_phi"] = self.frozen_phi
+        # self.checkpoint_modules["frozen_phi"] = self.frozen_phi
         self.checkpoint_modules["mu"] = self.mu
         self.checkpoint_modules["theta"] = self.theta
         
@@ -76,6 +76,10 @@ class CTRLSACAgent(SAC):
         model_loss = model_loss(contrastive, labels)
         
 
+		prob_loss = torch.mm(z_phi, z_mu_next.t()).mean(dim=1)
+		prob_loss = (z_phi * z_mu_next).sum(-1).clamp(min=1e-4)
+		prob_loss = prob_loss.log().square().mean()  
+  
         r, _, _ = self.theta({"feature": z_phi}, role = "feature_theta")
         r_loss = 0.5 * F.mse_loss(r, sampled_rewards).mean()
         loss = model_loss + r_loss 

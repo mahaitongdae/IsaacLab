@@ -3,7 +3,7 @@ import torch.nn as nn
 
 # import the skrl components to build the RL system
 from skrl.agents.torch.sac import SAC, SAC_DEFAULT_CONFIG
-from skrl.envs.loaders.torch import load_isaaclab_env
+# from skrl.envs.loaders.torch import load_isaaclab_env
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
@@ -15,16 +15,18 @@ from sac.critic import Critic, TestCritic
 from sac.feature import Phi, Mu, Theta
 
 from ctrlsac_agent import CTRLSACAgent
-from omni.isaac.lab.utils.dict import print_dict
+# from omni.isaac.lab.utils.dict import print_dict
 import os
-import gymnasium as gym
+# import gymnasium as gym
+import gym
 
 # seed for reproducibility
 set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Direct-v0", num_envs=1, cli_args=cli_args)
+# env = load_isaaclab_env(task_name="Isaac-Quadcopter-Direct-v0", num_envs=1, cli_args=cli_args)
+env = gym.make("InvertedPendulum-v2")
 
 video_kwargs = {
     "video_folder": os.path.join("runs/torch/Quadcopter", "videos", "train"),
@@ -33,8 +35,8 @@ video_kwargs = {
     "disable_logger": True,
 }
 print("[INFO] Recording videos during training.")
-print_dict(video_kwargs, nesting=4)
-env = gym.wrappers.RecordVideo(env, **video_kwargs)
+# print_dict(video_kwargs, nesting=4)
+# env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
 env = wrap_env(env)
 
