@@ -21,7 +21,7 @@ from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.math import sample_uniform
-
+import numpy as np
 
 @configclass
 class CartpoleEnvCfg(DirectRLEnvCfg):
@@ -126,13 +126,11 @@ class CartpoleEnv(DirectRLEnv):
 
         # set up spaces
         self.single_observation_space = gym.spaces.Dict()
-        
-        INF = 100000
-        
+                
         self.single_observation_space["policy"] = gym.spaces.Box(
-            low=-INF, high=INF, shape=(self.num_observations,)
+            low=-np.inf, high=np.inf, shape=(self.num_observations,)
         )
-        self.single_action_space = gym.spaces.Box(low=-INF, high=INF, shape=(self.num_actions,))
+        self.single_action_space = gym.spaces.Box(low=-1, high=1, shape=(self.num_actions,))
 
         # batch the spaces for vectorized environments
         self.observation_space = gym.vector.utils.batch_space(self.single_observation_space["policy"], self.num_envs)

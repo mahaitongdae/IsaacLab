@@ -23,17 +23,27 @@ class Phi(DeterministicMixin, Model):
         
         state_dim = observation_space.shape[0]
         action_dim = action_space.shape[0]
+
+
+
+        self.l1 = nn.Linear(state_dim + action_dim, hidden_dim)
+        self.l2 = nn.Linear(hidden_dim, hidden_dim)
+        self.l3 = nn.Linear(hidden_dim, feature_dim)
+
   
-        self.net = nn.Sequential(nn.Linear(state_dim + action_dim, hidden_dim),
-                                nn.ELU(),
-                                nn.Linear(hidden_dim, hidden_dim),
-                                nn.ELU(),
-                                nn.Linear(hidden_dim, feature_dim)
-                            )
+  
+        # self.net = nn.Sequential(nn.Linear(state_dim + action_dim, hidden_dim),
+        #                         nn.ELU(),
+        #                         nn.Linear(hidden_dim, hidden_dim),
+        #                         nn.ELU(),
+        #                         nn.Linear(hidden_dim, feature_dim)
+        #                     )
 
     def compute(self, inputs, role):
         x = torch.cat([inputs["states"], inputs["actions"]], axis=-1)
-        z_phi = self.net(x)
+        z = F.elu(self.l1(x)) 
+        z = F.elu(self.l2(z)) 
+        z_phi = self.l3(z)
         return z_phi, {}
 
 class Mu(DeterministicMixin, Model):
@@ -54,16 +64,16 @@ class Mu(DeterministicMixin, Model):
 
         state_dim = observation_space.shape[0]
 
-        self.net = nn.Sequential(nn.Linear(state_dim, hidden_dim),
-                                nn.ELU(),
-                                nn.Linear(hidden_dim, hidden_dim),
-                                nn.ELU(),
-                                nn.Linear(hidden_dim, feature_dim),
-                                nn.Tanh()
-                            )
+        self.l1 = nn.Linear(state_dim , hidden_dim)
+        self.l2 = nn.Linear(hidden_dim, hidden_dim)
+        self.l3 = nn.Linear(hidden_dim, feature_dim)
+
 
     def compute(self, inputs, role):
-        z_mu = self.net(inputs["states"])
+        z = F.elu(self.l1(inputs['states']))
+        z = F.elu(self.l2(z)) 
+        z_mu = self.l3(z) 
+
         return z_mu, {}
 
 
