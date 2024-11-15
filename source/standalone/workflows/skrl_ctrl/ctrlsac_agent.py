@@ -48,9 +48,9 @@ class CTRLSACAgent(SAC):
         self.use_feature_target = cfg['use_feature_target']
         self.extra_feature_steps = cfg['extra_feature_steps']
 
-        # if self.use_feature_target:
-        #     self.phi_target = copy.deepcopy(self.phi)
-        #     self.frozen_phi_target = copy.deepcopy(self.frozen_phi)
+        if self.use_feature_target:
+            self.phi_target = copy.deepcopy(self.phi)
+            self.frozen_phi_target = copy.deepcopy(self.frozen_phi)
 
 
         self.feature_optimizer = torch.optim.Adam(
@@ -76,18 +76,16 @@ class CTRLSACAgent(SAC):
         model_loss = model_loss(contrastive, labels)
         
 
-		prob_loss = torch.mm(z_phi, z_mu_next.t()).mean(dim=1)
-		prob_loss = (z_phi * z_mu_next).sum(-1).clamp(min=1e-4)
-		prob_loss = prob_loss.log().square().mean()  
+		# prob_loss = torch.mm(z_phi, z_mu_next.t()).mean(dim=1)
+		# prob_loss = (z_phi * z_mu_next).sum(-1).clamp(min=1e-4)
+		# prob_loss = prob_loss.log().square().mean()  
   
         r, _, _ = self.theta({"feature": z_phi}, role = "feature_theta")
         r_loss = 0.5 * F.mse_loss(r, sampled_rewards).mean()
-        loss = model_loss + r_loss 
+        loss = model_loss + r_loss
 
         self.feature_optimizer.zero_grad()
         loss.backward()
-        # torch.nn.utils.clip_grad_norm(self.phi.parameters(), 0.9)
-        # torch.nn.utils.clip_grad_norm(self.mu.parameters(), 0.9)
         self.feature_optimizer.step()
 
         return {
@@ -268,21 +266,18 @@ class CTRLSACAgent(SAC):
             sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones = self.memory.sample(names=self._tensors_names, batch_size=self._batch_size)[0]
             feature_loss = self.feature_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
 
-
-        self.track_data("Loss / Feature loss", feature_loss['total_loss'])
-
-        #     if self.use_feature_target:
-        #         self.update_feature_target()
+            if self.use_feature_target:
+                self.update_feature_target()
             
-        # self.frozen_phi.net.load_state_dict(self.phi.net.state_dict().copy())
-        # if self.use_feature_target:
-        #     self.frozen_phi_target.net.load_state_dict(self.phi.net.state_dict().copy())
+        self.frozen_phi.load_state_dict(self.phi.state_dict().copy())
+        if self.use_feature_target:
+            self.frozen_phi_target.load_state_dict(self.phi.state_dict().copy())
 
-        # critic_loss = self.critic_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
-        # actor_loss = self.actor_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
+        critic_loss = self.critic_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
+        actor_loss = self.actor_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
 
-        # self.update_target(timestep)
+        self.update_target(timestep)
 
-        # self.update_learning_rate()
+        self.update_learning_rate()
 
-        # self.logging(actor_loss, critic_loss, feature_loss)
+        self.logging(actor_loss, critic_loss, feature_loss)

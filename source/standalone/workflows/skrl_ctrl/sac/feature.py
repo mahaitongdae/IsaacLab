@@ -25,7 +25,6 @@ class Phi(DeterministicMixin, Model):
         action_dim = action_space.shape[0]
 
 
-
         self.l1 = nn.Linear(state_dim + action_dim, hidden_dim)
         self.l2 = nn.Linear(hidden_dim, hidden_dim)
         self.l3 = nn.Linear(hidden_dim, feature_dim)
@@ -72,7 +71,7 @@ class Mu(DeterministicMixin, Model):
     def compute(self, inputs, role):
         z = F.elu(self.l1(inputs['states']))
         z = F.elu(self.l2(z)) 
-        z_mu = self.l3(z) 
+        z_mu = F.tanh(self.l3(z)) 
 
         return z_mu, {}
 

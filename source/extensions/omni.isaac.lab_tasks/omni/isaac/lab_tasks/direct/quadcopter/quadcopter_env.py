@@ -106,7 +106,7 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     episode_length_s = 3.0
     decimation = 2
     num_actions = 4
-    window = 5
+    window = 10
     num_observations = 9 + window*3
     num_states = 0
     debug_vis = True
@@ -150,9 +150,9 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    lin_vel_reward_scale = -0.5
-    ang_vel_reward_scale = -1.0
-    distance_to_trajectory_reward_scale = 15.0
+    lin_vel_reward_scale = -0.005
+    ang_vel_reward_scale = -0.001
+    distance_to_trajectory_reward_scale = 1.0
 
 
 class QuadcopterEnv(DirectRLEnv):
