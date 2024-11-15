@@ -514,6 +514,7 @@ class DirectRLEnv(gym.Env):
 
         # set up spaces
         self.single_observation_space = gym.spaces.Dict()
+        
         self.single_observation_space["policy"] = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_observations,)
         )

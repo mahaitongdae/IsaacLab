@@ -11,6 +11,7 @@ import argparse
 
 from omni.isaac.lab.app import AppLauncher
 import carb
+print(carb)
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on running the cartpole RL environment.")
 parser.add_argument("--num_envs", type=int, default=16, help="Number of environments to spawn.")
@@ -30,13 +31,13 @@ import torch
 
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
-from omni.isaac.lab_tasks.manager_based.classic.cartpole.cartpole_env_cfg import CartpoleEnvCfg
+from omni.isaac.lab_tasks.manager_based.classic.quadcopter.quadcopter_env_cfg import QuadcopterEnvCfg
 
 
 def main():
     """Main function."""
     # create environment configuration
-    env_cfg = CartpoleEnvCfg()
+    env_cfg = QuadcopterEnvCfg()
     env_cfg.scene.num_envs = args_cli.num_envs
     # setup RL environment
     env = ManagerBasedRLEnv(cfg=env_cfg)
@@ -56,7 +57,7 @@ def main():
             # step the environment
             obs, rew, terminated, truncated, info = env.step(joint_efforts)
             # print current orientation of pole
-            print("[Env 0]: Pole joint: ", obs["policy"][0][1].item())
+            # print("[Env 0]: Pole joint: ", obs["policy"][0][1].item())
             # update counter
             count += 1
 
