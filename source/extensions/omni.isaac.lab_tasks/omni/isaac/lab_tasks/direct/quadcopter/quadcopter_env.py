@@ -336,7 +336,7 @@ class QuadcopterEnv(DirectRLEnv):
 
 
 class TrajectoryGenerator:
-    def __init__(self, device, max_traj_dur = 10, freq=100, vn=0.1):
+    def __init__(self, device, max_traj_dur = 10, freq=100, vn=0.0):
         self.N = int(max_traj_dur*freq)
         self.vn = vn
         self.H = max_traj_dur
