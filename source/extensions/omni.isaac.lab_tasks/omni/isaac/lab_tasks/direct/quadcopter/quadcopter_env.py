@@ -107,7 +107,7 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     decimation = 2
     num_actions = 4
     window = 10
-    num_observations = 12 + window*6
+    num_observations = 13 + window*6
     num_states = 0
     debug_vis = True
     thresh_div = 0.3
@@ -418,6 +418,10 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             self.state_space = gym.vector.utils.batch_space(self.single_observation_space["critic"], self.num_envs)
 
 
+        self.radiusdt = 0.05
+        self.radius = 0.0
+
+
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
         self.scene.articulations["robot"] = self._robot
@@ -453,12 +457,14 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         
         window_wp = torch.stack(window_wp).view(self.num_envs, -1)        
         window_vel = torch.stack(window_vel).view(self.num_envs, -1)
+        
+        quat = self._robot.data.root_state_w[:, 3:7]
         obs = torch.cat(
             [
                 self._robot.data.root_lin_vel_b,
                 self._robot.data.root_lin_vel_w,
                 self._robot.data.root_ang_vel_b,
-                self._robot.data.projected_gravity_b,
+                quat,
                 window_wp,
                 window_vel
             ],
@@ -469,9 +475,14 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         self.episode_timesteps += 1
         return observations
 
+    
+
     def _get_rewards(self) -> torch.Tensor:                
         
         T = self.cfg.thresh_div
+        
+        Ft = (self._actions[:, 0] + 1.0) / 2.0
+        torques =  self._actions[:, 1:]
         
         distance_to_trajectory = torch.linalg.norm(self._desired_trajectory_w[torch.arange(self.num_envs), self.episode_timesteps] - self._robot.data.root_pos_w, dim=1)
         pos_rew = T - distance_to_trajectory
@@ -479,9 +490,9 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         distance_to_desired_vel = torch.linalg.norm(self._desired_trajectory_vel_w[torch.arange(self.num_envs), self.episode_timesteps] - self._robot.data.root_lin_vel_w, dim=1)
         vel_rew = T - distance_to_desired_vel      
         
-        u_rew = 0.5 - torch.absolute(0.5 - self._actions)
-        thrust_rew = u_rew[:, 0]
-        torques_rew = torch.sum(u_rew[:, 1:], axis=1)
+        hover_T = 1/self.cfg.thrust_to_weight
+        thrust_rew = 0.5 - torch.absolute(hover_T - Ft)
+        torques_rew = 1 - torch.sum(torch.absolute(torques), axis=1)
         
         av_rew = torch.sum(self.cfg.thresh_stable - (torch.absolute(self._robot.data.root_ang_vel_w)), dim=1)
 
@@ -489,10 +500,10 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
 
         rewards = {
             "pos_rew": pos_rew * self.cfg.pos_reward_scale * self.step_dt,
-            "vel_rew": pos_rew * self.cfg.pos_reward_scale * self.step_dt,
+            "vel_rew": vel_rew * self.cfg.vel_reward_scale * self.step_dt,
             "av_rew": av_rew * self.cfg.av_rew_scale * self.step_dt,
-            "thrust_rew": thrust_rew * self.cfg.thrust_rew_scale,
-            "torques_rew": torques_rew * self.cfg.torques_rew_scale,
+            "thrust_rew": thrust_rew * self.cfg.thrust_rew_scale * self.step_dt,
+            "torques_rew": torques_rew * self.cfg.torques_rew_scale * self.step_dt,
         }
         reward = 0.1 * torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
@@ -538,7 +549,9 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         # Sample new commands
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
-        self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids))
+        
+        self.update_task_difficulty(int(self._sim_step_counter/1e5) + 1)
+        self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids), offset_r = self.radius)
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
@@ -575,3 +588,6 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         self.goal_traj_visualizer.visualize(self._desired_trajectory_w.view(-1, 3))
         for i in range(self.episode_timesteps.size().numel()):
             self.immediate_wpt_visualizer.visualize(self._desired_trajectory_w[i, self.episode_timesteps[i]].view(-1, 3))
+
+    def update_task_difficulty(self, level):
+            self.radius = self.radiusdt * level

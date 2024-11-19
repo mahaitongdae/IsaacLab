@@ -31,7 +31,7 @@ env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_e
 
 video_kwargs = {
     "video_folder": os.path.join("runs/torch/Quadcopter-Trajectory", "videos", "train"),
-    "step_trigger": lambda step: step % 2000== 0,
+    "step_trigger": lambda step: step % 10000== 0,
     "video_length": 400,
     "disable_logger": True,
 }
@@ -49,7 +49,7 @@ device = env.device
 memory = RandomMemory(memory_size=15625, num_envs=env.num_envs, device=device)
 
 # define hidden dimension
-actor_hidden_dim = 256
+actor_hidden_dim = 512
 actor_hidden_depth = 2
 
 # define feature dimension 

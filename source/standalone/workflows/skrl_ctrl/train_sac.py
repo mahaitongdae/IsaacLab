@@ -50,7 +50,7 @@ class Critic(DeterministicMixin, Model):
 
 
 # load and wrap the Isaac Lab environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Direct-v0", num_envs=1)
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1)
 env = wrap_env(env)
 
 device = env.device
@@ -80,8 +80,8 @@ cfg["discount_factor"] = 0.99
 cfg["polyak"] = 0.005
 cfg["actor_learning_rate"] = 5e-4
 cfg["critic_learning_rate"] = 5e-4
-cfg["random_timesteps"] = 800
-cfg["learning_starts"] = 800
+cfg["random_timesteps"] = 25e3
+cfg["learning_starts"] = 25e3
 cfg["grad_norm_clip"] = 0
 cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 5e-3
@@ -102,8 +102,7 @@ agent = SAC(models=models,
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 160000, "headless": True}
-# agent.load("/home/anaveen/Documents/research_ws/IsaacLab/runs/torch/Cartpole/24-10-10_15-31-21-899950_SAC/checkpoints/best_agent.pt")
+cfg_trainer = {"timesteps": int(1e6), "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 
