@@ -152,11 +152,12 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    pos_reward_scale = 10
-    vel_reward_scale = 1
-    av_rew_scale = 0.1
+    pos_reward_scale = 0
+    vel_reward_scale = 0
+    av_rew_scale = 5
     thrust_rew_scale = 5
-    torques_rew_scale = 0.1
+    torques_rew_scale = 5
+    survival_rew_scale = 1
     
 
 class QuadcopterEnv(DirectRLEnv):
@@ -379,7 +380,8 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
                 "vel_rew",
                 "av_rew",
                 "thrust_rew",
-                "torques_rew"
+                "torques_rew",
+                "survival_rew"
             ]
         }
         
@@ -496,6 +498,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         
         av_rew = torch.sum(self.cfg.thresh_stable - (torch.absolute(self._robot.data.root_ang_vel_w)), dim=1)
 
+        survive = 1-self._get_dones()[0].long()
 
 
         rewards = {
@@ -504,8 +507,9 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             "av_rew": av_rew * self.cfg.av_rew_scale * self.step_dt,
             "thrust_rew": thrust_rew * self.cfg.thrust_rew_scale * self.step_dt,
             "torques_rew": torques_rew * self.cfg.torques_rew_scale * self.step_dt,
+            "survival_rew": self.cfg.survival_rew_scale * self.step_dt * survive,
         }
-        reward = 0.1 * torch.sum(torch.stack(list(rewards.values())), dim=0)
+        reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
         for key, value in rewards.items():
             self._episode_sums[key] += value

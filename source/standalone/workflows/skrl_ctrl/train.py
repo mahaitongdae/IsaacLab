@@ -49,7 +49,7 @@ device = env.device
 memory = RandomMemory(memory_size=15625, num_envs=env.num_envs, device=device)
 
 # define hidden dimension
-actor_hidden_dim = 512
+actor_hidden_dim = 256
 actor_hidden_depth = 2
 
 # define feature dimension 

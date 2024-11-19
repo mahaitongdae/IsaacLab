@@ -75,8 +75,6 @@ env = wrap_env(env)
 device = env.device
 
 
-device = env.device
-
 
 # instantiate a memory as rollout buffer (any memory can be used for this)
 memory = RandomMemory(memory_size=15625, num_envs=env.num_envs, device=device)
