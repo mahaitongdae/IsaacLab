@@ -10,10 +10,15 @@ from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import set_seed
+from omni.isaac.lab.utils.dict import print_dict
+import os
+import gymnasium as gym
+# import gym
+import numpy as np
 
 
 # seed for reproducibility
-set_seed()  # e.g. `set_seed(42)` for fixed seed
+set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 
 # define models (stochastic and deterministic models) using mixins
@@ -50,8 +55,25 @@ class Critic(DeterministicMixin, Model):
 
 
 # load and wrap the Isaac Lab environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1)
+cli_args = ["--video"]
+# load and wrap the Isaac Gym environment
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
+
+video_kwargs = {
+    "video_folder": os.path.join("runs/torch/Quadcopter-Trajectory", "videos", "sac_train"),
+    "step_trigger": lambda step: step % 10000== 0,
+    "video_length": 400,
+    "disable_logger": True,
+}
+print("[INFO] Recording videos during training.")
+print_dict(video_kwargs, nesting=4)
+env = gym.wrappers.RecordVideo(env, **video_kwargs)
+
 env = wrap_env(env)
+
+
+device = env.device
+
 
 device = env.device
 
@@ -78,16 +100,14 @@ cfg["gradient_steps"] = 1
 cfg["batch_size"] = 1024
 cfg["discount_factor"] = 0.99
 cfg["polyak"] = 0.005
-cfg["actor_learning_rate"] = 5e-4
-cfg["critic_learning_rate"] = 5e-4
+cfg["actor_learning_rate"] = 1e-4/3
+cfg["critic_learning_rate"] = 1e-4/3
 cfg["random_timesteps"] = 25e3
 cfg["learning_starts"] = 25e3
 cfg["grad_norm_clip"] = 0
 cfg["learn_entropy"] = True
-cfg["entropy_learning_rate"] = 5e-3
+cfg["entropy_learning_rate"] = 1e-4
 cfg["initial_entropy_value"] = 1.0
-# cfg["state_preprocessor"] = RunningStandardScaler
-# cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = 800
 cfg["experiment"]["checkpoint_interval"] = 8000
