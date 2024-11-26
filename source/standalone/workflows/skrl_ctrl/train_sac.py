@@ -44,11 +44,11 @@ class Critic(DeterministicMixin, Model):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions, 512),
+        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions,   1024),
                                  nn.ReLU(),
-                                 nn.Linear(512, 256),
+                                 nn.Linear(1024, 512),
                                  nn.ReLU(),
-                                 nn.Linear(256, 1))
+                                 nn.Linear(512, 1))
 
     def compute(self, inputs, role):
         return self.net(torch.cat([inputs["states"], inputs["taken_actions"]], dim=1)), {}
@@ -57,10 +57,10 @@ class Critic(DeterministicMixin, Model):
 # load and wrap the Isaac Lab environment
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=64, cli_args=cli_args)
 
 video_kwargs = {
-    "video_folder": os.path.join("runs/torch/Quadcopter-Trajectory", "videos", "sac_train"),
+    "video_folder": os.path.join("runs/torch/Quadcopter", "videos", "sac_train"),
     "step_trigger": lambda step: step % 10000== 0,
     "video_length": 400,
     "disable_logger": True,
@@ -77,7 +77,7 @@ device = env.device
 
 
 # instantiate a memory as rollout buffer (any memory can be used for this)
-memory = RandomMemory(memory_size=15625, num_envs=env.num_envs, device=device)
+memory = RandomMemory(memory_size=int(1e5), num_envs=env.num_envs, device=device)
 
 
 # instantiate the agent's models (function approximators).
@@ -98,8 +98,8 @@ cfg["gradient_steps"] = 1
 cfg["batch_size"] = 1024
 cfg["discount_factor"] = 0.99
 cfg["polyak"] = 0.005
-cfg["actor_learning_rate"] = 1e-4/3
-cfg["critic_learning_rate"] = 1e-4/3
+cfg["actor_learning_rate"] = 1e-4
+cfg["critic_learning_rate"] = 1e-4
 cfg["random_timesteps"] = 25e3
 cfg["learning_starts"] = 25e3
 cfg["grad_norm_clip"] = 0

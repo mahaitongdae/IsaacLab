@@ -103,7 +103,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 @configclass
 class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 3.0
+    episode_length_s = 20.0
     decimation = 2
     num_actions = 4
     window = 10
@@ -152,12 +152,12 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    pos_reward_scale = 0
-    vel_reward_scale = 0
+    pos_reward_scale = 10
+    vel_reward_scale = 2
     av_rew_scale = 5
-    thrust_rew_scale = 5
-    torques_rew_scale = 5
-    survival_rew_scale = 1
+    thrust_rew_scale = 10
+    torques_rew_scale = 1
+    survival_rew_scale = 5
     
 
 class QuadcopterEnv(DirectRLEnv):
@@ -337,7 +337,7 @@ class QuadcopterEnv(DirectRLEnv):
 
 
 class TrajectoryGenerator:
-    def __init__(self, device, max_traj_dur = 10, freq=100, vn=0.0):
+    def __init__(self, device, max_traj_dur = 10, freq=100, vn=0.5):
         self.N = int(max_traj_dur*freq)
         self.vn = vn
         self.H = max_traj_dur
@@ -498,7 +498,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         
         av_rew = torch.sum(self.cfg.thresh_stable - (torch.absolute(self._robot.data.root_ang_vel_w)), dim=1)
 
-        survive = 1-self._get_dones()[0].long()
+        survive_rew = 1-self._get_dones()[0].long()
 
 
         rewards = {
@@ -507,7 +507,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             "av_rew": av_rew * self.cfg.av_rew_scale * self.step_dt,
             "thrust_rew": thrust_rew * self.cfg.thrust_rew_scale * self.step_dt,
             "torques_rew": torques_rew * self.cfg.torques_rew_scale * self.step_dt,
-            "survival_rew": self.cfg.survival_rew_scale * self.step_dt * survive,
+            "survival_rew": survive_rew * self.cfg.survival_rew_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
