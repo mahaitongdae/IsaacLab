@@ -27,11 +27,11 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=16, cli_args=cli_args)
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
 
 video_kwargs = {
     "video_folder": os.path.join("runs/torch/Quadcopter-Trajectory", "videos", "train"),
-    "step_trigger": lambda step: step % 2000== 0,
+    "step_trigger": lambda step: step % 10000== 0,
     "video_length": 400,
     "disable_logger": True,
 }
@@ -129,10 +129,10 @@ cfg["gradient_steps"] = 1
 cfg["batch_size"] = 256
 cfg["discount_factor"] = 0.99
 cfg["polyak"] = 0.005
-cfg["actor_learning_rate"] = 1e-4/3
-cfg["critic_learning_rate"] = 1e-4/3
+cfg["actor_learning_rate"] = 1e-5/3
+cfg["critic_learning_rate"] = 1e-5/3
 cfg["weight_decay"] = 0
-cfg["feature_learning_rate"] = 1e-4
+cfg["feature_learning_rate"] = 1e-5
 cfg["random_timesteps"] = 25e3
 cfg["learning_starts"] = 25e3
 cfg["grad_norm_clip"] = 0
@@ -163,7 +163,7 @@ agent = CTRLSACAgent(
 # agent.load('/home/anaveen/Documents/research_ws/IsaacLab/runs/torch/Quadcopter-Trajectory/24-11-11_19-15-43-148610_CTRLSACAgent/checkpoints/agent_249000.pt')
 # configure and instantiate the RL trainer
 cfg_trainer = {"timesteps": int(1e6), "headless": True}
-agent.load('/home/anaveen/Documents/research_ws/IsaacLab/runs/torch/Quadcopter-Trajectory/24-11-12_13-38-32-006748_CTRLSACAgent/checkpoints/best_agent.pt')
+# agent.load('/home/anaveen/Documents/research_ws/IsaacLab/runs/torch/Quadcopter-Trajectory/24-11-12_13-38-32-006748_CTRLSACAgent/checkpoints/best_agent.pt')
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 
