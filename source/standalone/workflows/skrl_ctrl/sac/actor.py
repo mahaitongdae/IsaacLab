@@ -92,9 +92,15 @@ class DiagGaussianActor(GaussianMixin, Model):
     GaussianMixin.__init__(self, min_log_std=log_std_bounds[0], max_log_std=log_std_bounds[1], reduction="mean")
 
     self.log_std_bounds = log_std_bounds
-    self.trunk = mlp(observation_space.shape[0], hidden_dim, 2 * action_space.shape[0],
-                            hidden_depth)
+    # self.trunk = mlp(observation_space.shape[0], hidden_dim, 2 * action_space.shape[0],
+    #                         hidden_depth)
+    self.trunk = nn.Sequential(nn.Linear(self.num_observations, 512),
+                                 nn.ReLU(),
+                                 nn.Linear(512, 256),
+                                 nn.ReLU(),
+                                 nn.Linear(256, self.num_actions))
     self.apply(weight_init)
+    
     
   def compute(self, inputs, role):
     mu, log_std = self.trunk(inputs["states"]).chunk(2, dim=-1)
