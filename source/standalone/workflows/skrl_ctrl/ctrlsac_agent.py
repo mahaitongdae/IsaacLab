@@ -172,8 +172,7 @@ class CTRLSACAgent(SAC):
         }
 
     def update_target(self, steps):
-        if steps % self.target_update_period == 0:
-            self.target_critic_1.update_parameters(self.critic_1, polyak=self._polyak)
+        self.target_critic_1.update_parameters(self.critic_1, polyak=self._polyak)
 
     def update_learning_rate(self):
         if self._learning_rate_scheduler:

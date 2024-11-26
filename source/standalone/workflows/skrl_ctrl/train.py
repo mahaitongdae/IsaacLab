@@ -53,8 +53,8 @@ actor_hidden_dim = 256
 actor_hidden_depth = 2
 
 # define feature dimension 
-feature_dim = 2048
-feature_hidden_dim = 1024
+feature_dim = 1024
+feature_hidden_dim = 512
 
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
@@ -70,25 +70,21 @@ models["policy"] = DiagGaussianActor(observation_space = env.observation_space,
 models["critic_1"] = Critic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
-                            hidden_dim = feature_hidden_dim, 
                             device = device)
 
 models["critic_2"] = Critic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
-                            hidden_dim = feature_hidden_dim, 
                             device = device)
 
 models["target_critic_1"] = Critic(observation_space = env.observation_space,
                                    action_space = env.action_space, 
                                    feature_dim = feature_dim, 
-                                   hidden_dim = feature_hidden_dim, 
                                    device = device)
 
 models["target_critic_2"] = Critic(observation_space = env.observation_space,
                                    action_space = env.action_space, 
                                    feature_dim = feature_dim, 
-                                   hidden_dim = feature_hidden_dim, 
                                    device = device)
 
 

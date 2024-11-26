@@ -98,7 +98,7 @@ class DiagGaussianActor(GaussianMixin, Model):
                                  nn.ReLU(),
                                  nn.Linear(512, 256),
                                  nn.ReLU(),
-                                 nn.Linear(256, self.num_actions))
+                                 nn.Linear(256, 2 * self.num_actions))
     self.apply(weight_init)
     
     
