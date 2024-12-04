@@ -103,7 +103,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 @configclass
 class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 20.0
+    episode_length_s = 5.0
     decimation = 2
     num_actions = 4
     window = 10
@@ -554,7 +554,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         
-        self.update_task_difficulty(int(self._sim_step_counter/1e5) + 1)
+        # self.update_task_difficulty(int(self._sim_step_counter/1e5) + 1)
         self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids), offset_r = self.radius)
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]

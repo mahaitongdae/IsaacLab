@@ -11,7 +11,7 @@ from skrl.trainers.torch import SequentialTrainer, StepTrainer
 from skrl.utils import set_seed
 
 from sac.actor import DiagGaussianActor
-from sac.critic import Critic, TestCritic
+from sac.critic import Critic
 from sac.feature import Phi, Mu, Theta
 
 from ctrlsac_agent import CTRLSACAgent
@@ -27,7 +27,7 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=16, cli_args=cli_args)
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=64, cli_args=cli_args)
 
 video_kwargs = {
     "video_folder": os.path.join("runs/torch/QuadCopter-CTRL", "videos", "train"),
@@ -53,8 +53,8 @@ actor_hidden_dim = 256
 actor_hidden_depth = 2
 
 # define feature dimension 
-feature_dim = 1024
-feature_hidden_dim = 512
+feature_dim = 512
+feature_hidden_dim = 256
 
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
@@ -83,10 +83,9 @@ models["target_critic_1"] = Critic(observation_space = env.observation_space,
                                    device = device)
 
 models["target_critic_2"] = Critic(observation_space = env.observation_space,
-                                   action_space = env.action_space, 
-                                   feature_dim = feature_dim, 
-                                   device = device)
-
+                                action_space = env.action_space, 
+                                feature_dim = feature_dim, 
+                                device = device)
 
 
 models["phi"] = Phi(observation_space = env.observation_space, 
@@ -128,10 +127,10 @@ cfg["polyak"] = 0.005
 cfg["actor_learning_rate"] = 1e-4
 cfg["critic_learning_rate"] = 1e-4
 cfg["weight_decay"] = 0
-cfg["feature_learning_rate"] = 1e-4
+cfg["feature_learning_rate"] = 5e-5
 cfg["random_timesteps"] = 25e3
 cfg["learning_starts"] = 25e3
-cfg["grad_norm_clip"] = 0
+cfg["grad_norm_clip"] = 1.0
 cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 1e-4
 cfg["initial_entropy_value"] = 1.0
@@ -141,9 +140,9 @@ cfg["initial_entropy_value"] = 1.0
 cfg["experiment"]["write_interval"] = 800
 cfg["experiment"]["checkpoint_interval"] = 8000
 cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
-cfg['use_feature_target'] = True
-cfg['extra_feature_steps'] = 1
-cfg['target_update_period'] = 2
+cfg['use_feature_target'] = False
+cfg['extra_feature_steps'] = 0
+cfg['target_update_period'] = 1
 
 
 
@@ -156,7 +155,7 @@ agent = CTRLSACAgent(
             device=device
         )
 
-cfg_trainer = {"timesteps": int(1e6), "headless": True}
+cfg_trainer = {"timesteps": int(5e6), "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # train the agent(s)

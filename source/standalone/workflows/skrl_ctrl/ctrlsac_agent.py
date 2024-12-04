@@ -35,12 +35,6 @@ class CTRLSACAgent(SAC):
             device=device,
             cfg=cfg
         )
-
-
-        self.policy_optimizer = torch.optim.Adam(self.policy.parameters(), lr=self._actor_learning_rate, betas=[0.9, 0.999], weight_decay=0)
-        self.critic_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=self._critic_learning_rate, betas=[0.9, 0.999], weight_decay=0)
-
-
         self.phi = self.models.get("phi", None)
         self.frozen_phi = self.models.get("frozen_phi", None)
         self.mu = self.models.get("mu", None)
@@ -58,7 +52,7 @@ class CTRLSACAgent(SAC):
             weight_decay=cfg['weight_decay'], lr=cfg['feature_learning_rate'])
 
         self.checkpoint_modules["phi"] = self.phi
-        # self.checkpoint_modules["frozen_phi"] = self.frozen_phi
+        self.checkpoint_modules["frozen_phi"] = self.frozen_phi
         self.checkpoint_modules["mu"] = self.mu
         self.checkpoint_modules["theta"] = self.theta
         
@@ -116,14 +110,16 @@ class CTRLSACAgent(SAC):
                 z_phi, _, _ = self.frozen_phi({"states": sampled_states, "actions": sampled_actions}, role = "feature")
                 z_phi_next, _, _ = self.frozen_phi({"states": sampled_next_states, "actions": next_actions}, role = "next_feature")
 
-            next_qs, _, _ = self.target_critic_1({"z_phi": z_phi_next}, role="target_critic")
-            next_q = torch.min(next_qs[0], next_qs[1]) - self.entropy_coefficient * next_log_prob
+            next_q1, _, _ = self.target_critic_1({"z_phi": z_phi_next}, role="target_critic")
+            next_q2, _, _ = self.target_critic_2({"z_phi": z_phi_next}, role="target_critic")
+            next_q = torch.min(next_q1, next_q2) - self.entropy_coefficient * next_log_prob
             target_q = sampled_rewards + sampled_dones.logical_not() * self._discount_factor * next_q 
             
-        qs, _, _ = self.critic_1({"z_phi": z_phi}, role="critic")
-        q1_loss = F.mse_loss(target_q, qs[0])
-        q2_loss = F.mse_loss(target_q, qs[1])
-        q_loss = q1_loss + q2_loss
+        q1, _, _ = self.critic_1({"z_phi": z_phi}, role="critic")
+        q2, _, _ = self.critic_2({"z_phi": z_phi}, role="critic")
+        q1_loss = F.mse_loss(target_q, q1)
+        q2_loss = F.mse_loss(target_q, q2)
+        q_loss = (q1_loss + q2_loss)/2
 
         self.critic_optimizer.zero_grad()
         q_loss.backward()
@@ -132,8 +128,8 @@ class CTRLSACAgent(SAC):
         return {
             'q1_loss': q1_loss.item(), 
             'q2_loss': q2_loss.item(),
-            'q1': qs[0],
-            'q2': qs[1],
+            'q1': q1,
+            'q2': q2,
             'q_loss': q_loss,
             'target_q': target_q
             }
@@ -144,8 +140,9 @@ class CTRLSACAgent(SAC):
         """	
         actions, log_prob, _ = self.policy.act({"states": sampled_states}, role="policy")
         z_phi, _, _ = self.frozen_phi({"states": sampled_states, "actions": actions}, role="feature")
-        qs, _, _ = self.critic_1({"z_phi": z_phi}, role="critic")
-        q = torch.min(qs[0], qs[1])
+        q1, _, _ = self.critic_1({"z_phi": z_phi}, role="critic")
+        q2, _, _ = self.critic_2({"z_phi": z_phi}, role="critic")
+        q = torch.min(q1, q2)
 
         actor_loss = ((self.entropy_coefficient) * log_prob - q).mean()
         self.policy_optimizer.zero_grad()
@@ -173,6 +170,7 @@ class CTRLSACAgent(SAC):
 
     def update_target(self, steps):
         self.target_critic_1.update_parameters(self.critic_1, polyak=self._polyak)
+        self.target_critic_2.update_parameters(self.critic_2, polyak=self._polyak)
 
     def update_learning_rate(self):
         if self._learning_rate_scheduler:
@@ -270,7 +268,7 @@ class CTRLSACAgent(SAC):
             
         self.frozen_phi.load_state_dict(self.phi.state_dict().copy())
         if self.use_feature_target:
-            self.frozen_phi_target.load_state_dict(self.phi.state_dict().copy())
+            self.frozen_phi_target.load_state_dict(self.phi_target.state_dict().copy())
 
         critic_loss = self.critic_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
         actor_loss = self.actor_step(sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones)
