@@ -1,171 +1,162 @@
-# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
-"""
-Script to play a checkpoint of an RL agent from skrl.
-
-Visit the skrl documentation (https://skrl.readthedocs.io) to see the examples structured in
-a more user-friendly way.
-"""
-
-"""Launch Isaac Sim Simulator first."""
-
-import argparse
-
-from omni.isaac.lab.app import AppLauncher
-
-# add argparse arguments
-parser = argparse.ArgumentParser(description="Play a checkpoint of an RL agent from skrl.")
-parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
-parser.add_argument(
-    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
-)
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
-parser.add_argument(
-    "--ml_framework",
-    type=str,
-    default="torch",
-    choices=["torch", "jax", "jax-numpy"],
-    help="The ML framework used for training the skrl agent.",
-)
-parser.add_argument(
-    "--algorithm",
-    type=str,
-    default="PPO",
-    choices=["PPO", "IPPO", "MAPPO"],
-    help="The RL algorithm used for training the skrl agent.",
-)
-
-# append AppLauncher cli args
-AppLauncher.add_app_launcher_args(parser)
-args_cli = parser.parse_args()
-# always enable cameras to record video
-if args_cli.video:
-    args_cli.enable_cameras = True
-
-# launch omniverse app
-app_launcher = AppLauncher(args_cli)
-simulation_app = app_launcher.app
-
-"""Rest everything follows."""
-
-import gymnasium as gym
-import os
 import torch
+import torch.nn as nn
 
-import skrl
-from packaging import version
+# import the skrl components to build the RL system
+from skrl.agents.torch.sac import SAC, SAC_DEFAULT_CONFIG
+from skrl.envs.loaders.torch import load_isaaclab_env
+from skrl.envs.wrappers.torch import wrap_env
+from skrl.memories.torch import RandomMemory
+from skrl.resources.preprocessors.torch import RunningStandardScaler
+from skrl.trainers.torch import SequentialTrainer, StepTrainer
+from skrl.utils import set_seed
 
-# check for minimum supported skrl version
-SKRL_VERSION = "1.3.0"
-if version.parse(skrl.__version__) < version.parse(SKRL_VERSION):
-    skrl.logger.error(
-        f"Unsupported skrl version: {skrl.__version__}. "
-        f"Install supported version using 'pip install skrl>={SKRL_VERSION}'"
-    )
-    exit()
+from sac.actor import DiagGaussianActor
+from sac.critic import Critic
+from sac.feature import Phi, Mu, Theta
 
-if args_cli.ml_framework.startswith("torch"):
-    from skrl.utils.runner.torch import Runner
-elif args_cli.ml_framework.startswith("jax"):
-    from skrl.utils.runner.jax import Runner
-
-from omni.isaac.lab.envs import DirectMARLEnv, multi_agent_to_single_agent
+from ctrlsac_agent import CTRLSACAgent
 from omni.isaac.lab.utils.dict import print_dict
+import os
+import gymnasium as gym
+# import gym
+import numpy as np
 
-import omni.isaac.lab_tasks  # noqa: F401
-from omni.isaac.lab_tasks.utils import get_checkpoint_path, load_cfg_from_registry, parse_env_cfg
-from omni.isaac.lab_tasks.utils.wrappers.skrl import SkrlVecEnvWrapper
-
-# config shortcuts
-algorithm = args_cli.algorithm.lower()
+# seed for reproducibility
+set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 
-def main():
-    """Play with skrl agent."""
-    # parse configuration
-    env_cfg = parse_env_cfg(
-        args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
-    )
-    try:
-        experiment_cfg = load_cfg_from_registry(args_cli.task, f"skrl_{algorithm}_cfg_entry_point")
-    except ValueError:
-        experiment_cfg = load_cfg_from_registry(args_cli.task, "skrl_cfg_entry_point")
+cli_args = ["--video"]
+# load and wrap the Isaac Gym environment
+env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
 
-    # specify directory for logging experiments (load checkpoint)
-    log_root_path = os.path.join("logs", "skrl", experiment_cfg["agent"]["experiment"]["directory"])
-    log_root_path = os.path.abspath(log_root_path)
-    print(f"[INFO] Loading experiment from directory: {log_root_path}")
-    # get checkpoint path
-    if args_cli.checkpoint:
-        resume_path = os.path.abspath(args_cli.checkpoint)
-    else:
-        resume_path = get_checkpoint_path(
-            log_root_path, run_dir=f".*_{algorithm}_{args_cli.ml_framework}", other_dirs=["checkpoints"]
+video_kwargs = {
+    "video_folder": os.path.join("runs/torch/QuadCopter-CTRL", "videos", "eval"),
+    "step_trigger": lambda step: step % 10000== 0,
+    "video_length": 1000,
+    "disable_logger": True,
+}
+print("[INFO] Recording videos during training.")
+print_dict(video_kwargs, nesting=4)
+env = gym.wrappers.RecordVideo(env, **video_kwargs)
+
+env = wrap_env(env)
+
+
+device = env.device
+
+
+# instantiate a memory as experience replay
+memory = RandomMemory(memory_size=int(1e5), num_envs=env.num_envs, device=device)
+
+# define hidden dimension
+actor_hidden_dim = 256
+actor_hidden_depth = 2
+
+# define feature dimension 
+feature_dim = 512
+feature_hidden_dim = 256
+
+# instantiate the agent's models (function approximators).
+# SAC requires 5 models, visit its documentation for more details
+# https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
+models = {}
+models["policy"] = DiagGaussianActor(observation_space = env.observation_space,
+                                     action_space = env.action_space, 
+                                     hidden_dim = actor_hidden_dim, 
+                                     hidden_depth = actor_hidden_depth,
+                                     log_std_bounds = [-5., 2.], 
+                                     device = device)
+
+models["critic_1"] = Critic(observation_space = env.observation_space,
+                            action_space = env.action_space, 
+                            feature_dim = feature_dim, 
+                            device = device)
+
+models["critic_2"] = Critic(observation_space = env.observation_space,
+                            action_space = env.action_space, 
+                            feature_dim = feature_dim, 
+                            device = device)
+
+models["target_critic_1"] = Critic(observation_space = env.observation_space,
+                                   action_space = env.action_space, 
+                                   feature_dim = feature_dim, 
+                                   device = device)
+
+models["target_critic_2"] = Critic(observation_space = env.observation_space,
+                                action_space = env.action_space, 
+                                feature_dim = feature_dim, 
+                                device = device)
+
+
+models["phi"] = Phi(observation_space = env.observation_space, 
+				    action_space = env.action_space, 
+				    feature_dim = feature_dim, 
+				    hidden_dim = feature_hidden_dim,
+                    device = device
+                )
+
+models["frozen_phi"] = Phi(observation_space = env.observation_space, 
+    				       action_space = env.action_space, 
+	    			       feature_dim = feature_dim, 
+		    	           hidden_dim = feature_hidden_dim,
+                           device = device
+                        )
+
+models["theta"] = Theta(
+    		        observation_space = env.observation_space,
+		            action_space = env.action_space, 
+		            feature_dim = feature_dim, 
+                    device = device
+                )
+
+models["mu"] = Mu(
+                observation_space = env.observation_space, 
+                action_space = env.action_space, 
+                feature_dim = feature_dim, 
+                hidden_dim = feature_hidden_dim,
+                device = device
+            )
+
+# configure and instantiate the agent (visit its documentation to see all the options)
+# https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
+cfg = SAC_DEFAULT_CONFIG.copy()
+cfg["gradient_steps"] = 1
+cfg["batch_size"] = 1024
+cfg["discount_factor"] = 0.99
+cfg["polyak"] = 0.005
+cfg["actor_learning_rate"] = 1e-4
+cfg["critic_learning_rate"] = 1e-4
+cfg["weight_decay"] = 0
+cfg["feature_learning_rate"] = 5e-5
+cfg["grad_norm_clip"] = 1.0
+cfg["learn_entropy"] = True
+cfg["entropy_learning_rate"] = 1e-4
+cfg["initial_entropy_value"] = 1.0
+# cfg["state_preprocessor"] = RunningStandardScaler
+# cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
+# logging to TensorBoard and write checkpoints (in timesteps)
+cfg["experiment"]["write_interval"] = 800
+cfg["experiment"]["checkpoint_interval"] = 8000
+cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
+cfg['use_feature_target'] = False
+cfg['extra_feature_steps'] = 0
+cfg['target_update_period'] = 1
+
+
+
+agent = CTRLSACAgent(
+            models=models,
+            memory=memory,
+            cfg=cfg,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            device=device
         )
-    log_dir = os.path.dirname(os.path.dirname(resume_path))
+agent.load("")
+cfg_trainer = {"timesteps": int(1000), "headless": True}
+trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
-    # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
-    # wrap for video recording
-    if args_cli.video:
-        video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "play"),
-            "step_trigger": lambda step: step == 0,
-            "video_length": args_cli.video_length,
-            "disable_logger": True,
-        }
-        print("[INFO] Recording videos during training.")
-        print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
-
-    # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
-        env = multi_agent_to_single_agent(env)
-
-    # wrap around environment for skrl
-    env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
-
-    # configure and instantiate the skrl runner
-    # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
-    experiment_cfg["trainer"]["close_environment_at_exit"] = False
-    experiment_cfg["agent"]["experiment"]["write_interval"] = 0  # don't log to TensorBoard
-    experiment_cfg["agent"]["experiment"]["checkpoint_interval"] = 0  # don't generate checkpoints
-    runner = Runner(env, experiment_cfg)
-
-    print(f"[INFO] Loading model checkpoint from: {resume_path}")
-    runner.agent.load(resume_path)
-    # set agent to evaluation mode
-    runner.agent.set_running_mode("eval")
-
-    # reset environment
-    obs, _ = env.reset()
-    timestep = 0
-    # simulate environment
-    while simulation_app.is_running():
-        # run everything in inference mode
-        with torch.inference_mode():
-            # agent stepping
-            actions = runner.agent.act(obs, timestep=0, timesteps=0)[0]
-            # env stepping
-            obs, _, _, _, _ = env.step(actions)
-        if args_cli.video:
-            timestep += 1
-            # Exit the play loop after recording one video
-            if timestep == args_cli.video_length:
-                break
-
-    # close the simulator
-    env.close()
+# train the agent(s)
+trainer.eval()
 
 
-if __name__ == "__main__":
-    # run the main function
-    main()
-    # close sim app
-    simulation_app.close()
