@@ -153,10 +153,23 @@ agent = CTRLSACAgent(
             device=device
         )
 agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/QuadCopter-CTRL/24-12-04_03-10-03-347639_CTRLSACAgent/checkpoints/best_agent.pt")
-cfg_trainer = {"timesteps": int(1000), "headless": True}
-trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
-
-# train the agent(s)
-trainer.eval()
 
 
+states, infos = env.reset()
+
+for i in range(1000):
+    # state-preprocessor + policy
+    with torch.no_grad():
+        actions = agent.act({"states": states})[0]
+
+    # step the environment
+    next_states, rewards, terminated, truncated, infos = env.step(actions)
+
+    # render the environment
+    env.render()
+
+    # check for termination/truncation
+    if terminated.any() or truncated.any():
+        states, infos = env.reset()
+    else:
+        states = next_states

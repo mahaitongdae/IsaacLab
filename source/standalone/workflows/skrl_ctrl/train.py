@@ -46,7 +46,8 @@ device = env.device
 
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=int(1e5), num_envs=env.num_envs, device=device)
+memory_size=int(1e5)
+memory = RandomMemory(memory_size=memory_size, num_envs=env.num_envs, device=device)
 
 # define hidden dimension
 actor_hidden_dim = 256
@@ -137,13 +138,13 @@ cfg["initial_entropy_value"] = 1.0
 # cfg["state_preprocessor"] = RunningStandardScaler
 # cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 800
-cfg["experiment"]["checkpoint_interval"] = 8000
-cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
+cfg["experiment"]["write_interval"] = 1000
+cfg["experiment"]["checkpoint_interval"] = 10000
 cfg['use_feature_target'] = False
-cfg['extra_feature_steps'] = 0
+cfg['extra_feature_steps'] = 1
 cfg['target_update_period'] = 1
 
+cfg["experiment"]["directory"] = f"runs/torch/QuadCopter-CTRL/{cfg['extra_feature_steps']}-{cfg['feature_learning_rate']}-{feature_hidden_dim}-{feature_dim}-{memory_size}"
 
 
 agent = CTRLSACAgent(
@@ -155,7 +156,7 @@ agent = CTRLSACAgent(
             device=device
         )
 
-cfg_trainer = {"timesteps": int(5e6), "headless": True}
+cfg_trainer = {"timesteps": int(1e6), "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # train the agent(s)

@@ -132,16 +132,16 @@ cfg["grad_norm_clip"] = 1.0
 cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 1e-4
 cfg["initial_entropy_value"] = 1.0
-cfg["random_timesteps"] = 25e3
+cfg["random_timesteps"] = 0
 cfg["learning_starts"] = 25e3
 # cfg["state_preprocessor"] = RunningStandardScaler
 # cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 800
-cfg["experiment"]["checkpoint_interval"] = 8000
+cfg["experiment"]["write_interval"] = 1
+cfg["experiment"]["checkpoint_interval"] = 10000
 cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
 cfg['use_feature_target'] = False
-cfg['extra_feature_steps'] = 0
+cfg['extra_feature_steps'] = 1
 cfg['target_update_period'] = 1
 
 
@@ -154,11 +154,29 @@ agent = CTRLSACAgent(
             action_space=env.action_space,
             device=device
         )
-agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/QuadCopter-CTRL/24-12-04_03-10-03-347639_CTRLSACAgent/checkpoints/agent_1696000.pt")
-cfg_trainer = {"timesteps": int(1000), "headless": True}
-trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
-
-# train the agent(s)
-trainer.eval()
+agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/QuadCopter-CTRL/24-12-04_03-10-03-347639_CTRLSACAgent/checkpoints/best_agent.pt")
 
 
+traj_error = torch.zeros(1000, 3)
+
+states, infos = env.reset()
+
+for i in range(1000):
+    # state-preprocessor + policy
+    traj_error[i] = states[13:16]
+    with torch.no_grad():
+        actions = agent.act({"states": states})[0]
+
+    # step the environment
+    next_states, rewards, terminated, truncated, infos = env.step(actions)
+
+    # render the environment
+    env.render()
+
+    # check for termination/truncation
+    if terminated.any() or truncated.any():
+        states, infos = env.reset()
+    else:
+        states = next_states
+
+print(traj_error.mean())
