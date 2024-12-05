@@ -132,8 +132,6 @@ cfg["grad_norm_clip"] = 1.0
 cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 1e-4
 cfg["initial_entropy_value"] = 1.0
-cfg["random_timesteps"] = 25e3
-cfg["learning_starts"] = 25e3
 # cfg["state_preprocessor"] = RunningStandardScaler
 # cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
@@ -154,7 +152,7 @@ agent = CTRLSACAgent(
             action_space=env.action_space,
             device=device
         )
-agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/QuadCopter-CTRL/24-12-04_03-10-03-347639_CTRLSACAgent/checkpoints/agent_1696000.pt")
+agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/QuadCopter-CTRL/24-12-04_03-10-03-347639_CTRLSACAgent/checkpoints/best_agent.pt")
 cfg_trainer = {"timesteps": int(1000), "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
