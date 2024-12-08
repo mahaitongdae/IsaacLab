@@ -27,10 +27,12 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=64, cli_args=cli_args)
+task_version = "Linear"
+task_name = f"Isaac-Quadcopter-{task_version}-Trajectory-Direct-v0"
+env = load_isaaclab_env(task_name = task_name, num_envs=64, cli_args=cli_args)
 
 video_kwargs = {
-    "video_folder": os.path.join("runs/torch/QuadCopter-CTRL", "videos", "train"),
+    "video_folder": os.path.join(f"runs/torch/{task_version}/", "videos", "train"),
     "step_trigger": lambda step: step % 10000== 0,
     "video_length": 400,
     "disable_logger": True,
@@ -54,8 +56,8 @@ actor_hidden_dim = 256
 actor_hidden_depth = 2
 
 # define feature dimension 
-feature_dim = 512
-feature_hidden_dim = 256
+feature_dim = 2048
+feature_hidden_dim = 1024
 
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
@@ -141,10 +143,11 @@ cfg["initial_entropy_value"] = 1.0
 cfg["experiment"]["write_interval"] = 1000
 cfg["experiment"]["checkpoint_interval"] = 10000
 cfg['use_feature_target'] = False
-cfg['extra_feature_steps'] = 1
+cfg['extra_feature_steps'] = 3
 cfg['target_update_period'] = 1
+cfg['eval'] = False
 
-cfg["experiment"]["directory"] = f"runs/torch/QuadCopter-CTRL/{cfg['extra_feature_steps']}-{cfg['feature_learning_rate']}-{feature_hidden_dim}-{feature_dim}-{memory_size}"
+cfg["experiment"]["directory"] = f"runs/torch/{task_name}/CTRL-SAC/{cfg['extra_feature_steps']}-{cfg['feature_learning_rate']}-{feature_hidden_dim}-{feature_dim}-{memory_size}-small"
 
 
 agent = CTRLSACAgent(

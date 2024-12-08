@@ -11,11 +11,11 @@ class Critic(DeterministicMixin, Model):
         
         self.feature_dim = feature_dim
         
-        self.net = nn.Sequential(nn.Linear(self.feature_dim, 2048),
-                                 nn.ReLU(),
-                                 nn.Linear(2048, 1024),
+        self.net = nn.Sequential(nn.Linear(self.feature_dim, 1024),
                                  nn.ReLU(),
                                  nn.Linear(1024, 512),
+                                #  nn.ReLU(),
+                                #  nn.Linear(1024, 512),
                                  nn.ReLU(),
                                  nn.Linear(512, 1))
 

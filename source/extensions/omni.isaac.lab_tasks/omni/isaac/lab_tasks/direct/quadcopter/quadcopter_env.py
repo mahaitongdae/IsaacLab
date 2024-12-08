@@ -101,7 +101,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
 
 @configclass
-class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
+class QuadcopterTrajectoryLinearEnvCfg(DirectRLEnvCfg):
     # env
     episode_length_s = 5.0
     decimation = 2
@@ -112,6 +112,7 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     debug_vis = True
     thresh_div = 0.3
     thresh_stable = 1.5
+    mode = 0
     
 
 
@@ -157,8 +158,24 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     av_rew_scale = 5
     thrust_rew_scale = 10
     torques_rew_scale = 1
-    survival_rew_scale = 5
+    survival_rew_scale = 6
+
+
+@configclass
+class QuadcopterTrajectoryMultiEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 3
+
+@configclass
+class QuadcopterTrajectoryDiagonalEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 1
+
+@configclass
+class QuadcopterTrajectoryQuadraticEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 2
     
+@configclass
+class QuadcopterTrajectoryOODEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 4
 
 class QuadcopterEnv(DirectRLEnv):
     cfg: QuadcopterEnvCfg
@@ -344,17 +361,20 @@ class PolynomialTrajectoryGenerator:
         self.device = device
         
         if mode == 0:
-            self.coefficients = torch.tensor([[0, 0, 0, 0, 1, 0]])
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0]])
         elif mode == 1:
-            self.coefficients = torch.tensor([[0, 0, 0, 1, 0, 0]])
+            self.coefficients = torch.tensor([[0, 1, 0, 0, 0, 0]])
         elif mode == 2:            
             self.coefficients = torch.tensor([[0, 0, 1, 0, 0, 0]])
         elif mode == 3:
-            self.coefficients = torch.tensor([[0, 0, 0, 0, 1, 0],
-                                              [0, 0, 0, 1, 0, 0],
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0],
+                                              [0, 1, 0, 0, 0, 0],
                                               [0, 0, 1, 0, 0, 0]])
         elif mode == 4:
-            self.coefficients = torch.tensor([[0, 0, 1, 1, 1, 0]])
+            self.coefficients = torch.tensor([[1, 1, 1, 0, 0, 0]])
+            
+        
+        self.coefficients = self.coefficients.to(self.device)
     
     def generate_trajectory(self, rpose, num_environments, offset_r=0.05):
         pos0 = torch.rand(num_environments, 1,3, device=self.device)*offset_r + rpose.unsqueeze(1)       
@@ -380,15 +400,19 @@ class PolynomialTrajectoryGenerator:
 
         # Compute the derivative (velocity for y-axis)
         deriv_powers = powers[:-1]  # Remove the constant term
-        deriv_coeffs = selected_coeffs[:, :-1] * powers[1:]  # Derivative coefficients
-        x_deriv_powers = x.unsqueeze(2).pow(deriv_powers)  # Shape: (num_environments, self.N, num_coeffs - 1)
+        deriv_coeffs = selected_coeffs[:, 1:] * powers[1:]  # Derivative coefficients
+
+
         vx = torch.ones_like(x) * self.vn  # Constant velocity for x
         vy = torch.sum(deriv_coeffs.unsqueeze(1) * x.unsqueeze(2).pow(deriv_powers), dim=2)  # Derivative for y
-        vz = torch.sum(deriv_coeffs.unsqueeze(1) * x.unsqueeze(2).pow(deriv_powers), dim=2)  # Derivative for z (can be distinct)
+        vz = torch.zeros_like(vx)  # Derivative for z (can be distinct)
 
         velocities = torch.stack([vx, vy, vz], dim=2)  # Shape: (num_environments, self.N, 3)
         
         traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_
+        
+        
+        
 
         return traj, velocities        
 
@@ -403,7 +427,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
         # Goal position
-        self._generator = PolynomialTrajectoryGenerator(self.device, max_traj_dur = self.cfg.episode_length_s + 2.0, freq=1/self.step_dt)
+        self._generator = PolynomialTrajectoryGenerator(self.device, max_traj_dur = self.cfg.episode_length_s + 2.0, freq=1/self.step_dt, mode=cfg.mode)
         self._desired_trajectory_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
         self._desired_trajectory_vel_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
 

@@ -24,7 +24,7 @@ class CTRLSACAgent(SAC):
                 observation_space: Optional[Union[int, Tuple[int], gym.Space, gymnasium.Space]] = None,
                 action_space: Optional[Union[int, Tuple[int], gym.Space, gymnasium.Space]] = None,
                 device: Optional[Union[str, torch.device]] = None,
-                cfg: Optional[dict] = None
+                cfg: Optional[dict] = None,
                 ) -> None:
         
         super().__init__(
@@ -41,6 +41,8 @@ class CTRLSACAgent(SAC):
         self.theta = self.models.get("theta", None)
         self.use_feature_target = cfg['use_feature_target']
         self.extra_feature_steps = cfg['extra_feature_steps']
+        
+        self.eval = cfg['eval']
 
         if self.use_feature_target:
             self.phi_target = copy.deepcopy(self.phi)
@@ -57,6 +59,9 @@ class CTRLSACAgent(SAC):
         self.checkpoint_modules["theta"] = self.theta
         
         self.target_update_period = cfg['target_update_period']
+        
+        if self.eval:
+            self.tracking_error = []
 
     def feature_step(self, sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones):
         z_phi, _, _ = self.phi({"states": sampled_states, "actions": sampled_actions}, role = "feature_phi")
@@ -70,9 +75,9 @@ class CTRLSACAgent(SAC):
         model_loss = model_loss(contrastive, labels)
         
 
-		# prob_loss = torch.mm(z_phi, z_mu_next.t()).mean(dim=1)
-		# prob_loss = (z_phi * z_mu_next).sum(-1).clamp(min=1e-4)
-		# prob_loss = prob_loss.log().square().mean()  
+        # prob_loss = torch.mm(z_phi, z_mu_next.t()).mean(dim=1)
+        # prob_loss = (z_phi * z_mu_next).sum(-1).clamp(min=1e-4)
+        # prob_loss = prob_loss.log().square().mean()  
   
         r, _, _ = self.theta({"feature": z_phi}, role = "feature_theta")
         r_loss = 0.5 * F.mse_loss(r, sampled_rewards).mean()
@@ -250,7 +255,10 @@ class CTRLSACAgent(SAC):
                 memory.add_samples(states=states, actions=actions, rewards=rewards, next_states=next_states,
                                    terminated=terminated, truncated=truncated)
 
-
+        if self.eval:
+            self.tracking_error.append(states[0, 13:16].cpu().numpy())
+            
+    
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step
 

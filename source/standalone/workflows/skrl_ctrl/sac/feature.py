@@ -23,6 +23,8 @@ class Phi(DeterministicMixin, Model):
         
         state_dim = observation_space.shape[0]
         action_dim = action_space.shape[0]
+        
+        self.feature_dim = feature_dim
 
 
         self.l1 = nn.Linear(state_dim + action_dim, hidden_dim)
@@ -43,7 +45,7 @@ class Phi(DeterministicMixin, Model):
         z = F.elu(self.l1(x)) 
         z = F.elu(self.l2(z)) 
         z_phi = self.l3(z)
-        return z_phi, {}
+        return  1 / (self.feature_dim ** 0.5) * z_phi, {}
 
 class Mu(DeterministicMixin, Model):
     """
@@ -62,6 +64,7 @@ class Mu(DeterministicMixin, Model):
         DeterministicMixin.__init__(self)
 
         state_dim = observation_space.shape[0]
+        self.feature_dim = feature_dim
 
         self.l1 = nn.Linear(state_dim , hidden_dim)
         self.l2 = nn.Linear(hidden_dim, hidden_dim)
@@ -73,7 +76,7 @@ class Mu(DeterministicMixin, Model):
         z = F.elu(self.l2(z)) 
         z_mu = F.tanh(self.l3(z)) 
 
-        return z_mu, {}
+        return  1 / (self.feature_dim ** 0.5) * z_mu, {}
 
 
 class Theta(DeterministicMixin, Model):

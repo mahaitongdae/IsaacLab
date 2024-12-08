@@ -10,7 +10,7 @@ Quacopter environment.
 import gymnasium as gym
 
 from . import agents
-from .quadcopter_env import QuadcopterEnv, QuadcopterEnvCfg, QuadcopterTrajectoryEnv, QuadcopterTrajectoryEnvCfg
+from .quadcopter_env import QuadcopterEnv, QuadcopterEnvCfg, QuadcopterTrajectoryEnv, QuadcopterTrajectoryLinearEnvCfg, QuadcopterTrajectoryDiagonalEnvCfg, QuadcopterTrajectoryQuadraticEnvCfg, QuadcopterTrajectoryMultiEnvCfg, QuadcopterTrajectoryOODEnvCfg
 
 ##
 # Register Gym environments.
@@ -29,10 +29,46 @@ gym.register(
 )
 
 gym.register(
-    id="Isaac-Quadcopter-Trajectory-Direct-v0",
+    id="Isaac-Quadcopter-Linear-Trajectory-Direct-v0",
     entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": QuadcopterTrajectoryEnvCfg
+        "env_cfg_entry_point": QuadcopterTrajectoryLinearEnvCfg
+    },
+)
+
+gym.register(
+    id="Isaac-Quadcopter-Diagonal-Trajectory-Direct-v0",
+    entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": QuadcopterTrajectoryDiagonalEnvCfg
+    },
+)
+
+gym.register(
+    id="Isaac-Quadcopter-Quadratic-Trajectory-Direct-v0",
+    entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": QuadcopterTrajectoryQuadraticEnvCfg
+    },
+)
+
+gym.register(
+    id="Isaac-Quadcopter-Multi-Trajectory-Direct-v0",
+    entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": QuadcopterTrajectoryMultiEnvCfg
+    },
+)
+
+gym.register(
+    id="Isaac-Quadcopter-OOD-Trajectory-Direct-v0",
+    entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": QuadcopterTrajectoryOODEnvCfg
     },
 )
