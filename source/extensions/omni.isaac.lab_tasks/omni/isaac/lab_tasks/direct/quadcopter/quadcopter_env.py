@@ -101,9 +101,9 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
 
 @configclass
-class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
+class QuadcopterTrajectoryLinearEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 20.0
+    episode_length_s = 10.0
     decimation = 2
     num_actions = 4
     window = 10
@@ -112,6 +112,7 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     debug_vis = True
     thresh_div = 0.3
     thresh_stable = 1.5
+    mode = 0
     
 
 
@@ -158,7 +159,31 @@ class QuadcopterTrajectoryEnvCfg(DirectRLEnvCfg):
     thrust_rew_scale = 10
     torques_rew_scale = 1
     survival_rew_scale = 5
+
+
+@configclass
+class QuadcopterTrajectoryMultiEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 3
+
+@configclass
+class QuadcopterTrajectoryDiagonalEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 1
+
+@configclass
+class QuadcopterTrajectoryQuadraticEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 2
     
+@configclass
+class QuadcopterTrajectoryOODEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 4
+    episode_length_s = 4.0
+    def __post_init__(self):
+        """Post initialization."""
+        # Set viewer settings
+        self.viewer.eye = [-0.0, 4.0, 7.5]  # Positioned directly above
+        self.viewer.lookat = [1.0, 4.0, 0.0]  # Looking at the center of the environment
+        self.viewer.up = [-1.0, 0.0, 0.0]  # Up direction is now along the y-axis
+        
 
 class QuadcopterEnv(DirectRLEnv):
     cfg: QuadcopterEnvCfg
@@ -273,6 +298,7 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 2.0)
+        
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -298,7 +324,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
-        if len(env_ids) == self.num_envs:
+        if len(env_ids) == self.num_envs and self.num_envs > 1:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
 
@@ -336,24 +362,68 @@ class QuadcopterEnv(DirectRLEnv):
         self.goal_pos_visualizer.visualize(self._desired_pos_w)
 
 
-class TrajectoryGenerator:
-    def __init__(self, device, max_traj_dur = 10, freq=100, vn=0.5):
+class PolynomialTrajectoryGenerator:
+    def __init__(self, device, max_traj_dur= 10, freq=100, vn=0.5, mode=0):
         self.N = int(max_traj_dur*freq)
         self.vn = vn
         self.H = max_traj_dur
         self.device = device
+        
+        if mode == 0:
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0]])
+        elif mode == 1:
+            self.coefficients = torch.tensor([[0, 1, 0, 0, 0, 0]])
+        elif mode == 2:            
+            self.coefficients = torch.tensor([[0, 0, 1, 0, 0, 0]])
+        elif mode == 3:
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0],
+                                              [0, 1, 0, 0, 0, 0],
+                                              [0, 0, 1, 0, 0, 0]])
+        elif mode == 4:
+            self.coefficients = torch.tensor([[0, 1, 1, 0, 0, 0]])
+            
+        
+        self.coefficients = self.coefficients.to(self.device)
     
     def generate_trajectory(self, rpose, num_environments, offset_r=0.05):
         pos0 = torch.rand(num_environments, 1,3, device=self.device)*offset_r + rpose.unsqueeze(1)       
         traj_ = torch.zeros(num_environments, self.N, 3, device =self.device)
         traj_[:, :, 0] = torch.linspace(0, self.H * self.vn, self.N, device=self.device)        
-        traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_        
+
+        # traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_        
         
-        velocity = torch.zeros(traj.shape, device=self.device)
-        velocity[:, :, 1] = self.vn
-        return traj, velocity
+        # velocity = torch.zeros(traj.shape, device=self.device)
+        # velocity[:, :, 1] = self.vn
+        # return traj, velocity
+        
+        random_indices = torch.randint(0, self.coefficients.shape[0], (num_environments,), device=self.device)
+        selected_coeffs = self.coefficients[random_indices]  # Shape: (num_environments, num_coeffs)
+
+        # Generate x values
+        x = traj_[:, :, 0]  # Shape: (num_environments, self.N)
+
+        # Polynomial computation for y-axis (traj_[:, :, 1])
+        powers = torch.arange(selected_coeffs.shape[1], device=self.device)  # Shape: (num_coeffs)
+        x_powers = x.unsqueeze(2).pow(powers)  # Shape: (num_environments, self.N, num_coeffs)
+        traj_[:, :, 1] = torch.sum(selected_coeffs.unsqueeze(1) * x_powers, dim=2)  # Shape: (num_environments, self.N)
+
+        # Compute the derivative (velocity for y-axis)
+        deriv_powers = powers[:-1]  # Remove the constant term
+        deriv_coeffs = selected_coeffs[:, 1:] * powers[1:]  # Derivative coefficients
+
+
+        vx = torch.ones_like(x) * self.vn  # Constant velocity for x
+        vy = torch.sum(deriv_coeffs.unsqueeze(1) * x.unsqueeze(2).pow(deriv_powers), dim=2)  # Derivative for y
+        vz = torch.zeros_like(vx)  # Derivative for z (can be distinct)
+
+        velocities = torch.stack([vx, vy, vz], dim=2)  # Shape: (num_environments, self.N, 3)
+        
+        traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_
         
         
+        
+
+        return traj, velocities        
 
 class QuadcopterTrajectoryEnv(DirectRLEnv):
     cfg: QuadcopterTrajectoryEnvCfg
@@ -366,9 +436,11 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
         # Goal position
-        self._generator = TrajectoryGenerator(self.device, max_traj_dur = self.cfg.episode_length_s + 2.0, freq=1/self.step_dt)
+        self._generator = PolynomialTrajectoryGenerator(self.device, max_traj_dur = self.cfg.episode_length_s + 2.0, freq=1/self.step_dt, mode=cfg.mode)
         self._desired_trajectory_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
         self._desired_trajectory_vel_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
+
+        self.positions = []
 
 
         self.episode_timesteps = torch.zeros(self.num_envs, device=self.device).type(torch.int64)
@@ -393,6 +465,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
 
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
+        
         
 
     def _configure_gym_env_spaces(self):
@@ -422,7 +495,11 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
 
         self.radiusdt = 0.05
         self.radius = 0.0
+        
+        self.eval = False
 
+    def eval_mode(self):
+        self.eval = True
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
@@ -445,6 +522,17 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
 
     def _apply_action(self):
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
+        # Assuming agent_position is a list or tuple [x, y, z]
+        
+        agent_position = self._robot.data.root_state_w[0, :3]
+        
+        
+        if self.eval:
+            self.positions.append(self._robot.data.root_state_w[0, :3].cpu().numpy())
+        # self.cfg.viewer.eye = [agent_position[0], agent_position[1], 5.0]
+        # self.cfg.viewer.lookat = agent_position
+        # self.cfg.viewer.up = [-1.0, 0.0, 0.0]  # Keep the up direction the same
+
 
     def _get_observations(self) -> dict:
         window_wp = []
@@ -518,6 +606,8 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 2.0)
+        if died.sum() > 0:
+            print(self.episode_timesteps[died])
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -537,13 +627,14 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         self.extras["log"].update(extras)
         extras = dict()
         extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
+        # print(extras["Episode_Termination/died"])
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
         extras["Metrics/final_distance_to_trajectory"] = final_distance_to_trajectory.item()
         self.extras["log"].update(extras)
 
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
-        if len(env_ids) == self.num_envs:
+        if len(env_ids) == self.num_envs and self.num_envs > 1:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
 
@@ -555,6 +646,8 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         
         self.update_task_difficulty(int(self._sim_step_counter/1e5) + 1)
+        
+        if self.eval: self.radius = 0.0
         self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids), offset_r = self.radius)
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]

@@ -98,7 +98,7 @@ class DiagGaussianActor(GaussianMixin, Model):
                                  nn.ReLU(),
                                  nn.Linear(512, 256),
                                  nn.ReLU(),
-                                 nn.Linear(256, self.num_actions))
+                                 nn.Linear(256, 2 * self.num_actions))
     self.apply(weight_init)
     
     
@@ -117,7 +117,7 @@ class DiagGaussianActor(GaussianMixin, Model):
 
   def act(self,
           inputs: Mapping[str, Union[torch.Tensor, Any]],
-          role: str = "") -> Tuple[torch.Tensor, Union[torch.Tensor, None], Mapping[str, Union[torch.Tensor, Any]]]:
+          role: str = "", explore = True) -> Tuple[torch.Tensor, Union[torch.Tensor, None], Mapping[str, Union[torch.Tensor, Any]]]:
       """Act stochastically in response to the state of the environment
 
       :param inputs: Model inputs. The most common keys are:
@@ -164,3 +164,22 @@ class DiagGaussianActor(GaussianMixin, Model):
       outputs["mean_actions"] = self._distribution.mean
       return actions, log_prob, outputs
     
+    
+# define models (stochastic and deterministic models) using mixins
+class StochasticActor(GaussianMixin, Model):
+    def __init__(self, observation_space, action_space,hidden_dim, hidden_depth,
+                log_std_bounds, device, clip_actions=False,
+                 clip_log_std=True, min_log_std=-5, max_log_std=2):
+        Model.__init__(self, observation_space, action_space, device)
+        GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std)
+
+        self.net = nn.Sequential(nn.Linear(self.num_observations, 512),
+                                 nn.ReLU(),
+                                 nn.Linear(512, 256),
+                                 nn.ReLU(),
+                                 nn.Linear(256, self.num_actions),
+                                 nn.Tanh())
+        self.log_std_parameter = nn.Parameter(torch.zeros(self.num_actions))
+
+    def compute(self, inputs, role):
+        return self.net(inputs["states"]), self.log_std_parameter, {}
