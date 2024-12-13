@@ -10,8 +10,8 @@ from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer, StepTrainer
 from skrl.utils import set_seed
 
-from sac.actor import DiagGaussianActor
-from sac.critic import Critic
+from sac.actor import DiagGaussianActor, StochasticActor
+from sac.critic import Critic, TestCritic
 from sac.feature import Phi, Mu, Theta
 
 from ctrlsac_agent import CTRLSACAgent
@@ -27,10 +27,12 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
+task = "OOD"
+env = load_isaaclab_env(task_name=f"Isaac-Quadcopter-{task}-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
+
 
 video_kwargs = {
-    "video_folder": os.path.join("runs/torch/QuadCopter-CTRL", "videos", "eval"),
+    "video_folder": os.path.join(f"runs/torch/{task}", "videos", "eval"),
     "step_trigger": lambda step: step % 10000== 0,
     "video_length": 1000,
     "disable_logger": True,
@@ -44,9 +46,9 @@ env = wrap_env(env)
 
 device = env.device
 
-
+experiment_length = int(250)
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=int(1e5), num_envs=env.num_envs, device=device)
+memory = RandomMemory(memory_size=experiment_length, num_envs=env.num_envs, device=device)
 
 # define hidden dimension
 actor_hidden_dim = 256
@@ -60,29 +62,29 @@ feature_hidden_dim = 256
 # SAC requires 5 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
 models = {}
-models["policy"] = DiagGaussianActor(observation_space = env.observation_space,
+models["policy"] = StochasticActor(observation_space = env.observation_space,
                                      action_space = env.action_space, 
                                      hidden_dim = actor_hidden_dim, 
                                      hidden_depth = actor_hidden_depth,
                                      log_std_bounds = [-5., 2.], 
                                      device = device)
 
-models["critic_1"] = Critic(observation_space = env.observation_space,
+models["critic_1"] = TestCritic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             device = device)
 
-models["critic_2"] = Critic(observation_space = env.observation_space,
+models["critic_2"] = TestCritic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             device = device)
 
-models["target_critic_1"] = Critic(observation_space = env.observation_space,
+models["target_critic_1"] = TestCritic(observation_space = env.observation_space,
                                    action_space = env.action_space, 
                                    feature_dim = feature_dim, 
                                    device = device)
 
-models["target_critic_2"] = Critic(observation_space = env.observation_space,
+models["target_critic_2"] = TestCritic(observation_space = env.observation_space,
                                 action_space = env.action_space, 
                                 feature_dim = feature_dim, 
                                 device = device)
@@ -135,16 +137,16 @@ cfg["initial_entropy_value"] = 1.0
 # cfg["state_preprocessor"] = RunningStandardScaler
 # cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 800
-cfg["experiment"]["checkpoint_interval"] = 8000
-cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
+cfg["experiment"]["write_interval"] = 100000000
+cfg["experiment"]["checkpoint_interval"] = 80000000000000
+# cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
 cfg['use_feature_target'] = False
 cfg['extra_feature_steps'] = 0
 cfg['target_update_period'] = 1
 
 
 
-agent = CTRLSACAgent(
+agent = SAC(
             models=models,
             memory=memory,
             cfg=cfg,
@@ -152,24 +154,19 @@ agent = CTRLSACAgent(
             action_space=env.action_space,
             device=device
         )
-agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/QuadCopter-CTRL/24-12-04_03-10-03-347639_CTRLSACAgent/checkpoints/best_agent.pt")
 
+## Linear SAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Linear-Trajectory-Direct-v0/SAC/24-12-11_14-02-12-408306_SAC/checkpoints/best_agent.pt"
+## Multi SAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/SAC/24-12-11_16-28-19-830592_SAC/checkpoints/best_agent.pt"
+agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/SAC/24-12-11_16-28-19-830592_SAC/checkpoints/best_agent.pt")
 
-states, infos = env.reset()
+cfg_trainer = {"timesteps": experiment_length, "headless": True}
+env.eval_mode()
+trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
+trainer.eval()
 
-for i in range(1000):
-    # state-preprocessor + policy
-    with torch.no_grad():
-        actions = agent.act({"states": states})[0]
+distance = agent.memory.tensors_view['states'][:, 13:16]
 
-    # step the environment
-    next_states, rewards, terminated, truncated, infos = env.step(actions)
-
-    # render the environment
-    env.render()
-
-    # check for termination/truncation
-    if terminated.any() or truncated.any():
-        states, infos = env.reset()
-    else:
-        states = next_states
+folder = f"/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/{task}/"
+print(np.savetxt(f"{folder}sac_agent_positions.txt", np.array(env.positions)))
+print(np.savetxt(f"{folder}trajectory.txt", env._desired_trajectory_w[0, :].cpu().numpy()))
+print(np.abs(distance.cpu()).mean(axis=0))

@@ -44,7 +44,7 @@ class Critic(DeterministicMixin, Model):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions,   1024),
+        self.net = nn.Sequential(nn.Linear(self.num_observations + self.num_actions, 1024),
                                  nn.ReLU(),
                                  nn.Linear(1024, 512),
                                  nn.ReLU(),
@@ -57,7 +57,8 @@ class Critic(DeterministicMixin, Model):
 # load and wrap the Isaac Lab environment
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-env = load_isaaclab_env(task_name="Isaac-Quadcopter-Trajectory-Direct-v0", num_envs=64, cli_args=cli_args)
+task_name = "Isaac-Quadcopter-Multi-Trajectory-Direct-v0"
+env = load_isaaclab_env(task_name=task_name, num_envs=64, cli_args=cli_args)
 
 video_kwargs = {
     "video_folder": os.path.join("runs/torch/Quadcopter", "videos", "sac_train"),
@@ -109,7 +110,8 @@ cfg["initial_entropy_value"] = 1.0
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = 800
 cfg["experiment"]["checkpoint_interval"] = 8000
-cfg["experiment"]["directory"] = "runs/torch/QuadCopter"
+cfg["experiment"]["directory"] = f"runs/torch/{task_name}/SAC"
+
 
 agent = SAC(models=models,
             memory=memory,
@@ -120,7 +122,7 @@ agent = SAC(models=models,
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": int(1e6), "headless": True}
+cfg_trainer = {"timesteps": int(5e5), "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 

@@ -30,6 +30,7 @@ class Phi(DeterministicMixin, Model):
         self.l1 = nn.Linear(state_dim + action_dim, hidden_dim)
         self.l2 = nn.Linear(hidden_dim, hidden_dim)
         self.l3 = nn.Linear(hidden_dim, feature_dim)
+        self.layer_norm = nn.LayerNorm(feature_dim)
 
   
   
@@ -44,8 +45,8 @@ class Phi(DeterministicMixin, Model):
         x = torch.cat([inputs["states"], inputs["actions"]], axis=-1)
         z = F.elu(self.l1(x)) 
         z = F.elu(self.l2(z)) 
-        z_phi = self.l3(z)
-        return  1 / (self.feature_dim ** 0.5) * z_phi, {}
+        z_phi = self.layer_norm(self.l3(z))
+        return  z_phi, {}
 
 class Mu(DeterministicMixin, Model):
     """
@@ -76,7 +77,7 @@ class Mu(DeterministicMixin, Model):
         z = F.elu(self.l2(z)) 
         z_mu = F.tanh(self.l3(z)) 
 
-        return  1 / (self.feature_dim ** 0.5) * z_mu, {}
+        return  z_mu, {}
 
 
 class Theta(DeterministicMixin, Model):

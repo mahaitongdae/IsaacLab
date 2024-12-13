@@ -10,8 +10,8 @@ from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer, StepTrainer
 from skrl.utils import set_seed
 
-from sac.actor import DiagGaussianActor
-from sac.critic import Critic
+from sac.actor import DiagGaussianActor, StochasticActor
+from sac.critic import Critic, TestCritic
 from sac.feature import Phi, Mu, Theta
 
 from ctrlsac_agent import CTRLSACAgent
@@ -27,7 +27,7 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-task_version = "Linear"
+task_version = "Multi"
 task_name = f"Isaac-Quadcopter-{task_version}-Trajectory-Direct-v0"
 env = load_isaaclab_env(task_name = task_name, num_envs=64, cli_args=cli_args)
 
@@ -52,11 +52,11 @@ memory_size=int(1e5)
 memory = RandomMemory(memory_size=memory_size, num_envs=env.num_envs, device=device)
 
 # define hidden dimension
-actor_hidden_dim = 256
+actor_hidden_dim = 512
 actor_hidden_depth = 2
 
 # define feature dimension 
-feature_dim = 2048
+feature_dim = 512
 feature_hidden_dim = 1024
 
 # instantiate the agent's models (function approximators).
@@ -142,13 +142,13 @@ cfg["initial_entropy_value"] = 1.0
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = 1000
 cfg["experiment"]["checkpoint_interval"] = 10000
-cfg['use_feature_target'] = False
-cfg['extra_feature_steps'] = 3
+cfg['use_feature_target'] = True
+cfg['extra_feature_steps'] = 1
 cfg['target_update_period'] = 1
 cfg['eval'] = False
 
-cfg["experiment"]["directory"] = f"runs/torch/{task_name}/CTRL-SAC/{cfg['extra_feature_steps']}-{cfg['feature_learning_rate']}-{feature_hidden_dim}-{feature_dim}-{memory_size}-small"
-
+cfg["experiment"]["directory"] = f"runs/torch/{task_name}/CTRL-SAC/{feature_hidden_dim}-{feature_dim}-{memory_size}"
+cfg['alpha'] = 1e-3
 
 agent = CTRLSACAgent(
             models=models,
@@ -159,7 +159,7 @@ agent = CTRLSACAgent(
             device=device
         )
 
-cfg_trainer = {"timesteps": int(1e6), "headless": True}
+cfg_trainer = {"timesteps": int(5e5), "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # train the agent(s)

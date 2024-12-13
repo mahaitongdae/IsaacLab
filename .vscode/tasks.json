@@ -24,6 +24,12 @@
             "windows": {
                 "command": "${workspaceFolder}/isaaclab.bat --format"
             }
+        },
+        {
+            "label": "Activate Isaac Lab",
+            "type": "shell",
+            "command": "source ${workspaceFolder}/_isaac_sim/setup_conda_env.sh",
+            "problemMatcher": []
         }
     ]
 }

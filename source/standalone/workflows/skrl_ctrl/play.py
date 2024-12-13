@@ -10,7 +10,7 @@ from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer, StepTrainer
 from skrl.utils import set_seed
 
-from sac.actor import DiagGaussianActor
+from sac.actor import DiagGaussianActor, StochasticActor
 from sac.critic import Critic
 from sac.feature import Phi, Mu, Theta
 
@@ -27,8 +27,9 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-task = "Linear"
+task = "OOD"
 env = load_isaaclab_env(task_name=f"Isaac-Quadcopter-{task}-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
+
 
 video_kwargs = {
     "video_folder": os.path.join(f"runs/torch/{task}", "videos", "eval"),
@@ -47,21 +48,22 @@ device = env.device
 
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=int(1e5), num_envs=env.num_envs, device=device)
+experiment_length = int(300)
+memory = RandomMemory(memory_size=experiment_length, num_envs=env.num_envs, device=device)
 
 # define hidden dimension
-actor_hidden_dim = 256
+actor_hidden_dim = 512
 actor_hidden_depth = 2
 
 # define feature dimension 
 feature_dim = 512
-feature_hidden_dim = 256
+feature_hidden_dim = 1024
 
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
 models = {}
-models["policy"] = DiagGaussianActor(observation_space = env.observation_space,
+models["policy"] = StochasticActor(observation_space = env.observation_space,
                                      action_space = env.action_space, 
                                      hidden_dim = actor_hidden_dim, 
                                      hidden_depth = actor_hidden_depth,
@@ -138,13 +140,14 @@ cfg["learning_starts"] = 25e3
 # cfg["state_preprocessor"] = RunningStandardScaler
 # cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-# cfg["experiment"]["write_interval"] = 1
-# cfg["experiment"]["checkpoint_interval"] = 10000
-# # cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
+cfg["experiment"]["write_interval"] = 1000000000000000
+cfg["experiment"]["checkpoint_interval"] = 10000000000000
+# cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
 cfg['use_feature_target'] = False
 cfg['extra_feature_steps'] = 1
 cfg['target_update_period'] = 1
 cfg['eval'] = True
+cfg['alpha'] = None
 
 
 agent = CTRLSACAgent(
@@ -155,10 +158,19 @@ agent = CTRLSACAgent(
             action_space=env.action_space,
             device=device
         )
-agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/CTRL-SAC/0-5e-05-256-512-100000-small/24-12-05_23-06-34-553726_CTRLSACAgent/checkpoints/best_agent.pt")
 
-cfg_trainer = {"timesteps": int(1000), "headless": True}
+## Linear CTRLSAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Linear-Trajectory-Direct-v0/CTRL-SAC/1024-512-100000/24-12-10_19-59-27-142587_CTRLSACAgent/checkpoints/best_agent.pt"
+## Multi CTRLSAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/CTRL-SAC/1024-512-100000/24-12-11_18-47-55-198869_CTRLSACAgent/checkpoints/best_agent.pt"
+agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Linear-Trajectory-Direct-v0/CTRL-SAC/1024-512-100000/24-12-10_19-59-27-142587_CTRLSACAgent/checkpoints/best_agent.pt")
+env.eval_mode()
+cfg_trainer = {"timesteps": experiment_length, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 trainer.eval()
 
-print(np.array(agent.tracking_error).mean(axis=0))
+distance = agent.memory.tensors_view['states'][:, 13:16]
+
+folder = f"/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/{task}/"
+print(np.savetxt(f"{folder}ctrl_agent_positions.txt", np.array(env.positions)))
+print(np.savetxt(f"{folder}trajectory.txt", env._desired_trajectory_w[0, :].cpu().numpy()))
+
+print(np.abs(distance.cpu()).mean(axis=0))
