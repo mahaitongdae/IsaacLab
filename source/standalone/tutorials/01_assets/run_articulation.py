@@ -44,6 +44,7 @@ from omni.isaac.lab.sim import SimulationContext
 # Pre-defined configs
 ##
 from omni.isaac.lab_assets import CARTPOLE_CFG  # isort:skip
+from omni.isaac.lab_assets.unitree import UNITREE_GO2_CFG
 
 
 def design_scene() -> tuple[dict, list[list[float]]]:
