@@ -142,7 +142,6 @@ def load_isaaclab_env(task_name: str = "",
 
     import omni.isaac.lab_tasks  # type: ignore
     from omni.isaac.lab_tasks.utils import parse_env_cfg  # type: ignore
-
     cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs, use_fabric=not args.disable_fabric)
 
     # print config

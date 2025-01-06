@@ -35,7 +35,7 @@ env = load_isaaclab_env(task_name = task_name, num_envs=32, cli_args=cli_args)
 multitask = True
 
 video_kwargs = {
-    "video_folder": os.path.join(f"runs/torch/{task_version}/{str(multitask)}", "videos", "train"),
+    "video_folder": os.path.join(f"runs/torch/{task_version}/", "videos", "train", "CTRLSAC"),
     "step_trigger": lambda step: step % 10000== 0,
     "video_length": 400,
     "disable_logger": True,
@@ -66,7 +66,7 @@ feature_hidden_dim = 1024
 cdim = 512
 
 # state dimensions
-task_state_dim = 60
+task_state_dim = 67
 drone_state_dim = 13
 
 
@@ -175,7 +175,7 @@ cfg['extra_critic_steps'] = 2
 cfg['target_update_period'] = 1
 cfg['eval'] = False
 
-cfg["experiment"]["directory"] = f"runs/torch/{task_name}/CTRL-SAC/{multitask}"
+cfg["experiment"]["directory"] = f"runs/torch/{task_name}/CTRL-SAC/"
 cfg['alpha'] = 1e-3
 
 agent = CTRLSACAgent(

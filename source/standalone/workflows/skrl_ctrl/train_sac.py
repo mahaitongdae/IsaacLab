@@ -62,11 +62,12 @@ class Critic(DeterministicMixin, Model):
 # load and wrap the Isaac Lab environment
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-task_name = "Isaac-Quadcopter-legtrain-Trajectory-Direct-v0"
+task_version = "legtrain"
+task_name = f"Isaac-Quadcopter-{task_version}-Trajectory-Direct-v0"
 env = load_isaaclab_env(task_name=task_name, num_envs=32, cli_args=cli_args)
 
 video_kwargs = {
-    "video_folder": os.path.join("runs/torch/Quadcopter", "videos", "sac_train"),
+    "video_folder": os.path.join(f"runs/torch/{task_version}/", "videos", "train", "SAC"),
     "step_trigger": lambda step: step % 10000== 0,
     "video_length": 400,
     "disable_logger": True,
@@ -119,8 +120,8 @@ cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 1e-4
 cfg["initial_entropy_value"] = 1.0
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 800
-cfg["experiment"]["checkpoint_interval"] = 8000
+cfg["experiment"]["write_interval"] = 1000
+cfg["experiment"]["checkpoint_interval"] = 10000
 cfg["experiment"]["directory"] = f"runs/torch/{task_name}/SAC"
 
 

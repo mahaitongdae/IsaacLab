@@ -23,9 +23,9 @@ import numpy as np
 import argparse
 from omni.isaac.lab.app import AppLauncher
 
-parser = argparse.ArgumentParser(description="Run the agent script with customizable parameters.")
+parser = argparse.ArgumentParser(description="Run the eval script with customizable parameters.")
 # Add arguments
-parser.add_argument("--task", type=str, default="OOD", choices=["legeval", "legood", "OOD"], help="Specify the task name (default: OOD).")
+parser.add_argument("--experiment", type=str, default="OOD", choices=["legeval", "legood", "OOD", "legtrain"], help="Specify the task name (default: OOD).")
 parser.add_argument("--agent_type", type=str, default="CTRLSAC", choices=["CTRLSAC", "SAC"], help="Specify the agent type (default: CTRLSAC).")
 parser.add_argument("--ckpt", type=str, default="best_agent", help="Specify the checkpoint name (default: best_agent).")
 
@@ -33,10 +33,9 @@ parser.add_argument("--ckpt", type=str, default="best_agent", help="Specify the 
 AppLauncher.add_app_launcher_args(parser)
 # Parse arguments
 args, _ = parser.parse_known_args()
-task = args.task
+task = args.experiment
 agent_type = args.agent_type
 ckpt = args.ckpt
-
 
 # seed for reproducibility
 set_seed(42)  # e.g. `set_seed(42)` for fixed seed
@@ -48,13 +47,14 @@ experiments = {
     "legeval": [50000, False],
     "legood": [500, True],
     "OOD": [500, True],
+    "legtrain": [3000, True]
 }
 
 
 
 experiment_length = experiments[task][0]
 record_video = experiments[task][1] 
-output_dir = f"runs/experiments/{task}/{agent_type}"
+output_dir = f"runs/experiments/{task}/{agent_type}-{ckpt}"
 
 video_kwargs = {
     "video_folder": os.path.join(output_dir, "videos"),
@@ -266,6 +266,7 @@ env.eval_mode()
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 trainer.eval()
 
+os.makedirs(output_dir, exist_ok=True)
 torch.save(env.results, f"{output_dir}/results.pth")
 
 

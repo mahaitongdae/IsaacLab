@@ -112,6 +112,7 @@ class QuadcopterTrajectoryLinearEnvCfg(DirectRLEnvCfg):
     num_observations = 13 + window*6
     num_states = 0
     debug_vis = True
+    include_coeffecients = False
     thresh_div = 0.3
     thresh_stable = 1.5
     mode = 0
@@ -164,12 +165,17 @@ class QuadcopterTrajectoryLinearEnvCfg(DirectRLEnvCfg):
     thrust_rew_scale = 10
     torques_rew_scale = 1
     survival_rew_scale = 5
+    
+    if include_coeffecients:
+        num_observations += 7
+
     def __post_init__(self):
         """Post initialization."""
         # Set viewer settings
         self.viewer.eye = [0.0, 4.0, 7.5]  # Positioned directly above
         self.viewer.lookat = [1.0, 0.0, 0.0]  # Looking at the center of the environment
         self.viewer.up = [0.0, 0.0, 0.0]  # Up direction is now along the y-axis
+
 
 
 @configclass
@@ -181,7 +187,7 @@ class QuadcopterTrajectoryMultiEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
 class QuadcopterTrajectoryLegendreTrainingEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
     mode = 5
     curriculum = True
-    profile = [3, 6]
+    profile = [3, 6, 6]
     
 @configclass
 class QuadcopterTrajectoryLegendreEvalEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
@@ -405,7 +411,7 @@ class QuadcopterEnv(DirectRLEnv):
 
 
 class PolynomialTrajectoryGenerator:
-    def __init__(self, device, max_traj_dur= 10, freq=100, vn=0.5, mode=0, num_trials=100000):
+    def __init__(self, device, max_traj_dur= 10, freq=100, vn=0.5, mode=0, num_trials=100000, eval_mode=False):
         self.N = int(max_traj_dur*freq)
         self.vn = vn
         self.H = max_traj_dur
@@ -416,24 +422,26 @@ class PolynomialTrajectoryGenerator:
         self.mode = mode
         self.curr_experiment = 0
 
+        self.eval = eval_mode
+        
         if mode == 0:
-            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0]])
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0, 0]])
         elif mode == 1:
-            self.coefficients = torch.tensor([[0, 1, 0, 0, 0, 0]])
+            self.coefficients = torch.tensor([[0, 1, 0, 0, 0, 0, 0]])
         elif mode == 2:            
-            self.coefficients = torch.tensor([[0, 0, 1, 0, 0, 0]])
+            self.coefficients = torch.tensor([[0, 0, 1, 0, 0, 0, 0]])
         elif mode == 3:
-            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0],
-                                              [0, 1, 0, 0, 0, 0],
-                                              [0, 0, 1, 0, 0, 0]])            
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0, 0],
+                                              [0, 1, 0, 0, 0, 0, 0],
+                                              [0, 0, 1, 0, 0, 0, 0]])            
         elif mode == 4:
             # self.coefficients = torch.tensor([[0, 0.75, 0, -0.75/6, 0, 0.75/120]])
-            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0]])
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0, 0]])
             self.poly = [None]
 
         elif mode == 5: ##Legendre training basis
             self.coefficients = torch.tensor([self.generate_legendre_coeffecients(deg) for deg in range(6)]).float()
-
+            self.poly = [None for _ in range(6)]
 
         elif mode == 6: ##Legendre OOD basis
             coeff, poly = self.generate_legendre_coeffecients(6, returnpoly=True)
@@ -451,6 +459,9 @@ class PolynomialTrajectoryGenerator:
             self.coefficients = torch.tensor(self.coefficients).float()            
 
         self.coefficients = self.coefficients.to(self.device)
+    
+    def activate_eval_mode(self):
+        self.eval = True
     
     def generate_legendre_coeffecients(self, deg, eval=False, returnpoly=False):
         
@@ -474,11 +485,10 @@ class PolynomialTrajectoryGenerator:
         traj_[:, :, 0] = torch.linspace(0, self.H * self.vn, self.N, device=self.device)        
         
         random_indices = torch.randint(0, min(lvl, self.coefficients.shape[0]), (num_environments,), device=self.device)
-        if self.mode == 7:
+        if self.eval:
             random_indices[0] = self.curr_experiment
             self.curr_experiment = (self.curr_experiment + 1) % self.coefficients.shape[0]
         selected_coeffs = self.coefficients[random_indices]  # Shape: (num_environments, num_coeffs)
-
         # Generate x values
         x = traj_[:, :, 0]  # Shape: (num_environments, self.N)
 
@@ -500,7 +510,7 @@ class PolynomialTrajectoryGenerator:
         
         traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_        
 
-        return traj, velocities        
+        return traj, velocities, selected_coeffs        
 
 
 class QuadcopterTrajectoryEnv(DirectRLEnv):
@@ -517,9 +527,10 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         self._generator = PolynomialTrajectoryGenerator(self.device, max_traj_dur = self.cfg.episode_length_s+0.25, freq=1/self.step_dt, mode=cfg.mode)
         self.lvl = self.cfg.profile[0]
         self._desired_trajectory_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
+        self._active_trajectory_command = torch.zeros(self.num_envs, 7, device=self.device)
         self._desired_trajectory_vel_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
 
-        self.episode_max_len = int(self.cfg.episode_length_s/ (2*self.cfg.sim.dt))
+        self.episode_max_len = int(self.cfg.episode_length_s/ (self.step_dt))
 
 
         self.episode_timesteps = torch.zeros(self.num_envs, device=self.device).type(torch.int64)
@@ -579,6 +590,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
 
     def eval_mode(self):
         self.eval = True
+        self._generator.activate_eval_mode()
         self.results = {}
 
     def _setup_scene(self):
@@ -638,6 +650,15 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             ],
             dim=-1,
         )
+        if self.cfg.include_coeffecients:
+            obs = torch.cat(
+                [
+                    obs,
+                    self._active_trajectory_command
+                ],
+                dim = -1
+            )
+            
         observations = {"policy": obs}
 
         self.episode_timesteps += 1
@@ -735,7 +756,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
 
 
                     
-        self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids), offset_r = self.radius, lvl = self.lvl)
+        self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids], self._active_trajectory_command[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids), offset_r = self.radius, lvl = self.lvl)
         if self.eval and self._generator.curr_experiment not in self.results:
             self.results[self._generator.curr_experiment] = {'trajectory': self._desired_trajectory_w[env_ids],
                                                   'pose': torch.zeros_like(self._desired_trajectory_w[env_ids])}
