@@ -11,7 +11,7 @@ from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import set_seed
 from omni.isaac.lab.utils.dict import print_dict
-from sac.actor import DiagGaussianActor, StochasticActor, DiagGaussianActorPolicy
+from networks.actor import DiagGaussianActor, DiagGaussianActorPolicy
 import os
 import gymnasium as gym
 # import gym
@@ -62,7 +62,7 @@ class Critic(DeterministicMixin, Model):
 # load and wrap the Isaac Lab environment
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-task_name = "Isaac-Quadcopter-Linear-Trajectory-Direct-v0"
+task_name = "Isaac-Quadcopter-legtrain-Trajectory-Direct-v0"
 env = load_isaaclab_env(task_name=task_name, num_envs=32, cli_args=cli_args)
 
 video_kwargs = {
@@ -90,13 +90,13 @@ memory = RandomMemory(memory_size=int(1e5), num_envs=env.num_envs, device=device
 # SAC requires 5 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
 models = {}
-# models["policy"] = DiagGaussianActorPolicy(env.observation_space, env.action_space, device)
-models["policy"] = DiagGaussianActorPolicy(observation_space = env.observation_space,
-                                     action_space = env.action_space, 
-                                     hidden_dim = actor_hidden_dim, 
-                                     hidden_depth = actor_hidden_depth,
-                                     log_std_bounds = [-5., 2.], 
-                                     device = device)
+models["policy"] = StochasticActor(env.observation_space, env.action_space, device)
+# models["policy"] = StochasticActor(observation_space = env.observation_space,
+#                                      action_space = env.action_space, 
+#                                      hidden_dim = actor_hidden_dim, 
+#                                      hidden_depth = actor_hidden_depth,
+#                                      log_std_bounds = [-5., 2.], 
+#                                      device = device)
 models["critic_1"] = Critic(env.observation_space, env.action_space, device)
 models["critic_2"] = Critic(env.observation_space, env.action_space, device)
 models["target_critic_1"] = Critic(env.observation_space, env.action_space, device)
@@ -133,7 +133,7 @@ agent = SAC(models=models,
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": int(5e5), "headless": True}
+cfg_trainer = {"timesteps": int(1e6), "headless": True, "environment_info": "log"}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 

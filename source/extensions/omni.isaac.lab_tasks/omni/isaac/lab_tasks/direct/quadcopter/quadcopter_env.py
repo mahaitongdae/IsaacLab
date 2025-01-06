@@ -20,6 +20,8 @@ from omni.isaac.lab.utils.math import subtract_frame_transforms
 
 import gymnasium as gym
 import numpy as np
+from numpy.polynomial.legendre import Legendre
+from numpy import polynomial as P
 ##
 # Pre-defined configs
 ##
@@ -114,6 +116,9 @@ class QuadcopterTrajectoryLinearEnvCfg(DirectRLEnvCfg):
     thresh_stable = 1.5
     mode = 0
     
+    curriculum = False
+    profile = [10]
+    total_iterations = 1e6
 
 
     ui_window_class_type = QuadcopterEnvWindow
@@ -153,7 +158,7 @@ class QuadcopterTrajectoryLinearEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    pos_reward_scale = 10
+    pos_reward_scale = 25
     vel_reward_scale = 2
     av_rew_scale = 5
     thrust_rew_scale = 10
@@ -170,6 +175,23 @@ class QuadcopterTrajectoryLinearEnvCfg(DirectRLEnvCfg):
 @configclass
 class QuadcopterTrajectoryMultiEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
     mode = 3
+
+
+@configclass
+class QuadcopterTrajectoryLegendreTrainingEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 5
+    curriculum = True
+    profile = [3, 6]
+    
+@configclass
+class QuadcopterTrajectoryLegendreEvalEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 7
+
+@configclass
+class QuadcopterTrajectoryLegendreOODEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
+    mode = 6
+    
+
 
 @configclass
 class QuadcopterTrajectoryDiagonalEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
@@ -195,7 +217,6 @@ class QuadcopterTrajectoryQuadraticEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
 @configclass
 class QuadcopterTrajectoryOODEnvCfg(QuadcopterTrajectoryLinearEnvCfg):
     mode = 4
-    episode_length_s = 4.0
     def __post_init__(self):
         """Post initialization."""
         # Set viewer settings
@@ -339,6 +360,7 @@ class QuadcopterEnv(DirectRLEnv):
         extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
         extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
+        
         self.extras["log"].update(extras)
 
         self._robot.reset(env_ids)
@@ -381,13 +403,19 @@ class QuadcopterEnv(DirectRLEnv):
         self.goal_pos_visualizer.visualize(self._desired_pos_w)
 
 
+
 class PolynomialTrajectoryGenerator:
-    def __init__(self, device, max_traj_dur= 10, freq=100, vn=0.5, mode=0):
+    def __init__(self, device, max_traj_dur= 10, freq=100, vn=0.5, mode=0, num_trials=100000):
         self.N = int(max_traj_dur*freq)
         self.vn = vn
         self.H = max_traj_dur
         self.device = device
         
+        self.B = self.vn * self.H
+        
+        self.mode = mode
+        self.curr_experiment = 0
+
         if mode == 0:
             self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0]])
         elif mode == 1:
@@ -397,25 +425,58 @@ class PolynomialTrajectoryGenerator:
         elif mode == 3:
             self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0],
                                               [0, 1, 0, 0, 0, 0],
-                                              [0, 0, 1, 0, 0, 0]])
+                                              [0, 0, 1, 0, 0, 0]])            
         elif mode == 4:
-            self.coefficients = torch.tensor([[0, 1, 1, 0, 0, 0]])
+            # self.coefficients = torch.tensor([[0, 0.75, 0, -0.75/6, 0, 0.75/120]])
+            self.coefficients = torch.tensor([[0, 0, 0, 0, 0, 0]])
+            self.poly = [None]
+
+        elif mode == 5: ##Legendre training basis
+            self.coefficients = torch.tensor([self.generate_legendre_coeffecients(deg) for deg in range(6)]).float()
+
+
+        elif mode == 6: ##Legendre OOD basis
+            coeff, poly = self.generate_legendre_coeffecients(6, returnpoly=True)
+            self.coefficients = torch.tensor([coeff]).float()
+            self.poly = [poly]
             
-        
+        elif mode == 7:
+            self.coefficients = []
+            self.poly = []
+            for _ in range(num_trials):
+                coeffs, poly = self.generate_legendre_coeffecients(5, eval=True, returnpoly=True)
+                self.coefficients.append(coeffs)
+                self.poly.append(poly)
+            
+            self.coefficients = torch.tensor(self.coefficients).float()            
+
         self.coefficients = self.coefficients.to(self.device)
     
-    def generate_trajectory(self, rpose, num_environments, offset_r=0.05):
+    def generate_legendre_coeffecients(self, deg, eval=False, returnpoly=False):
+        
+        coeffs = np.zeros(7,)
+        coeffs[deg] = 1
+
+        if eval:
+            coeffs[:deg+1] = np.random.randn(deg + 1,)
+        
+        legendre_poly = Legendre(coeffs, domain = [0, self.B])
+        coeffs = np.pad(legendre_poly.convert(kind=P.Polynomial).coef, (0, 6 - deg))
+        coeffs[0] = 0
+        
+        if returnpoly:
+            return coeffs, legendre_poly
+        return coeffs
+    
+    def generate_trajectory(self, rpose, num_environments, offset_r=0.05, lvl=10):
         pos0 = torch.rand(num_environments, 1,3, device=self.device)*offset_r + rpose.unsqueeze(1)       
         traj_ = torch.zeros(num_environments, self.N, 3, device =self.device)
         traj_[:, :, 0] = torch.linspace(0, self.H * self.vn, self.N, device=self.device)        
-
-        # traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_        
         
-        # velocity = torch.zeros(traj.shape, device=self.device)
-        # velocity[:, :, 1] = self.vn
-        # return traj, velocity
-        
-        random_indices = torch.randint(0, self.coefficients.shape[0], (num_environments,), device=self.device)
+        random_indices = torch.randint(0, min(lvl, self.coefficients.shape[0]), (num_environments,), device=self.device)
+        if self.mode == 7:
+            random_indices[0] = self.curr_experiment
+            self.curr_experiment = (self.curr_experiment + 1) % self.coefficients.shape[0]
         selected_coeffs = self.coefficients[random_indices]  # Shape: (num_environments, num_coeffs)
 
         # Generate x values
@@ -437,12 +498,10 @@ class PolynomialTrajectoryGenerator:
 
         velocities = torch.stack([vx, vy, vz], dim=2)  # Shape: (num_environments, self.N, 3)
         
-        traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_
-        
-        
-        
+        traj = torch.repeat_interleave(pos0, self.N, axis=1) + traj_        
 
         return traj, velocities        
+
 
 class QuadcopterTrajectoryEnv(DirectRLEnv):
     cfg: QuadcopterTrajectoryEnvCfg
@@ -455,11 +514,12 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
         # Goal position
-        self._generator = PolynomialTrajectoryGenerator(self.device, max_traj_dur = self.cfg.episode_length_s + 2.0, freq=1/self.step_dt, mode=cfg.mode)
+        self._generator = PolynomialTrajectoryGenerator(self.device, max_traj_dur = self.cfg.episode_length_s+0.25, freq=1/self.step_dt, mode=cfg.mode)
+        self.lvl = self.cfg.profile[0]
         self._desired_trajectory_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
         self._desired_trajectory_vel_w = torch.zeros(self.num_envs, self._generator.N, 3, device=self.device)
 
-        self.positions = []
+        self.episode_max_len = int(self.cfg.episode_length_s/ (2*self.cfg.sim.dt))
 
 
         self.episode_timesteps = torch.zeros(self.num_envs, device=self.device).type(torch.int64)
@@ -519,6 +579,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
 
     def eval_mode(self):
         self.eval = True
+        self.results = {}
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
@@ -542,12 +603,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
     def _apply_action(self):
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
         # Assuming agent_position is a list or tuple [x, y, z]
-        
-        agent_position = self._robot.data.root_state_w[0, :3]
-        
-        
-        if self.eval:
-            self.positions.append(self._robot.data.root_state_w[0, :3].cpu().numpy())
+                
         # self.cfg.viewer.eye = [agent_position[0], agent_position[1], 5.0]
         # self.cfg.viewer.lookat = agent_position
         # self.cfg.viewer.up = [-1.0, 0.0, 0.0]  # Keep the up direction the same
@@ -563,6 +619,9 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             desired_trajectory_vel_window_w = self._desired_trajectory_vel_w[i, self.episode_timesteps[i]: self.episode_timesteps[i] + self.cfg.window, :]
             window_wp.append(desired_trajectory_window_b)
             window_vel.append(desired_trajectory_vel_window_w)
+        
+            if self.eval:
+                self.results[self._generator.curr_experiment]['pose'][i][self.episode_timesteps[i]] = self._robot.data.root_state_w[i, :3]
         
         window_wp = torch.stack(window_wp).view(self.num_envs, -1)        
         window_vel = torch.stack(window_vel).view(self.num_envs, -1)
@@ -616,7 +675,7 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             "torques_rew": torques_rew * self.cfg.torques_rew_scale * self.step_dt,
             "survival_rew": survive_rew * self.cfg.survival_rew_scale * self.step_dt,
         }
-        reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        reward = torch.exp(torch.sum(torch.stack(list(rewards.values())), dim=0))
         # Logging
         for key, value in rewards.items():
             self._episode_sums[key] += value
@@ -641,12 +700,14 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
             self._episode_sums[key][env_ids] = 0.0
         self.extras["log"] = dict()
-        self.extras["log"].update(extras)
-        extras = dict()
+
+        # self.extras["log"].update(extras)
+        # extras = dict()
         extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
         # print(extras["Episode_Termination/died"])
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
         extras["Metrics/final_distance_to_trajectory"] = final_distance_to_trajectory.item()
+        
         self.extras["log"].update(extras)
 
         self._robot.reset(env_ids)
@@ -655,17 +716,30 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
 
-
+        if self.eval and self._generator.curr_experiment in self.results.keys():
+            self.results[self._generator.curr_experiment]['MSE'] = torch.mean(self.results[self._generator.curr_experiment]['trajectory'][0][:self.episode_max_len] - self.results[self._generator.curr_experiment]['pose'][0][:self.episode_max_len], axis=0)
+            self.results[self._generator.curr_experiment]['MSE_bc'] = torch.mean(self.results[self._generator.curr_experiment]['trajectory'][0][:self.episode_timesteps[env_ids]] - self.results[self._generator.curr_experiment]['pose'][0][:self.episode_timesteps[env_ids]], axis=0)
+            self.results[self._generator.curr_experiment]['crashed'] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
+            self.results[self._generator.curr_experiment]['time_alive'] = self.episode_timesteps[env_ids]
+            self.results[self._generator.curr_experiment]['trajectory_legendre'] = self._generator.poly[self._generator.curr_experiment]
+            self.results[self._generator.curr_experiment]['trajectory_monomial'] = self._generator.coefficients[self._generator.curr_experiment]
+            
         self.episode_timesteps[env_ids] = 0
         self._actions[env_ids] = 0.0
         # Sample new commands
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         
-        self.update_task_difficulty(int(self._sim_step_counter/1e5) + 1)
         
-        if self.eval: self.radius = 0.0
-        self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids), offset_r = self.radius)
+        if self.cfg.curriculum: self.update_task_difficulty()
+
+
+                    
+        self._desired_trajectory_w[env_ids], self._desired_trajectory_vel_w[env_ids] = self._generator.generate_trajectory(default_root_state[:, :3], len(env_ids), offset_r = self.radius, lvl = self.lvl)
+        if self.eval and self._generator.curr_experiment not in self.results:
+            self.results[self._generator.curr_experiment] = {'trajectory': self._desired_trajectory_w[env_ids],
+                                                  'pose': torch.zeros_like(self._desired_trajectory_w[env_ids])}
+
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
@@ -703,5 +777,11 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         for i in range(self.episode_timesteps.size().numel()):
             self.immediate_wpt_visualizer.visualize(self._desired_trajectory_w[i, self.episode_timesteps[i]].view(-1, 3))
 
-    def update_task_difficulty(self, level):
-            self.radius = self.radiusdt * level
+    def update_task_difficulty(self):
+        self.radius = self.radiusdt * (int(self._sim_step_counter/1e5) + 1)
+        self.lvl = self.cfg.profile[int((self._sim_step_counter/(2*self.cfg.total_iterations))*len(self.cfg.profile))]
+        
+        
+            
+    
+    

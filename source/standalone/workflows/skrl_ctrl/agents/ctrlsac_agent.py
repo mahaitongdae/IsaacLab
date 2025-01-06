@@ -15,6 +15,7 @@ from skrl import config, logger
 
 import itertools
 
+
 class CTRLSACAgent(SAC):
     """
     SAC with VAE learned latent features
@@ -67,9 +68,11 @@ class CTRLSACAgent(SAC):
             if isinstance(value, int) or isinstance(value, float):
              self.track_data(f'hparams/{key}', value)
         
-        if self.eval:
-            self.tracking_error = []
-
+    def decompose_state_vector(self, states):
+        drone_states = states[:, :13]
+        task_states = states[:, 13:]
+        
+        return drone_states, task_states
 
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step
@@ -88,19 +91,22 @@ class CTRLSACAgent(SAC):
             for _ in range(self.extra_feature_steps+1):
                 sampled_states = self._state_preprocessor(sampled_states, train=True)
                 sampled_next_states = self._state_preprocessor(sampled_next_states, train=True)
+                
+                sampled_drone_states, sampled_task_states = self.decompose_state_vector(sampled_states)
+                sampled_next_drone_states, sampled_next_task_states = self.decompose_state_vector(sampled_next_states)
 
                 # compute z_phi and z_mu_next
-                z_phi, _, _ = self.phi({"states": sampled_states, "actions": sampled_actions}, role = "feature_phi")
-                z_mu_next, _, _ = self.mu({"states": sampled_next_states}, role = "feature_mu")
+                z_phi, _, _ = self.phi({"states": sampled_states, 'drone_states': sampled_drone_states, "actions": sampled_actions}, role = "feature_phi")
+                z_mu_next, _, _ = self.mu({"states": sampled_next_states, 'drone_states': sampled_next_drone_states}, role = "feature_mu")
         
                 labels = torch.eye(sampled_states.shape[0]).to(self.device)
                 contrastive = (z_phi[:, None, :] * z_mu_next[None, :, :]).sum(-1) 
                 model_loss = nn.CrossEntropyLoss()
                 model_loss = model_loss(contrastive, labels)
                 
-                r, _, _ = self.theta({"feature": z_phi}, role = "feature_theta")
-                r_loss = 0.5 * F.mse_loss(r, sampled_rewards).mean()
-                feature_loss = model_loss + r_loss 
+                # r, _, _ = self.theta({"feature": z_phi}, role = "feature_theta")
+                # r_loss = 0.5 * F.mse_loss(r, sampled_rewards).mean()
+                feature_loss = model_loss 
 
                 self.feature_optimizer.zero_grad()
                 feature_loss.backward()
@@ -123,24 +129,28 @@ class CTRLSACAgent(SAC):
                 sampled_states = self._state_preprocessor(sampled_states, train=True)
                 sampled_next_states = self._state_preprocessor(sampled_next_states, train=True)
 
+                sampled_drone_states, sampled_task_states = self.decompose_state_vector(sampled_states)
+                sampled_next_drone_states, sampled_next_task_states = self.decompose_state_vector(sampled_next_states)
+
+
                 # compute target values
                 with torch.no_grad():
                     next_actions, next_log_prob, _ = self.policy.act({"states": sampled_next_states}, role="policy")
                     if self.use_feature_target:
-                        z_phi, _, _ = self.frozen_phi_target({"states": sampled_states, "actions": sampled_actions}, role="feature")
-                        z_phi_next, _, _ = self.frozen_phi_target({"states": sampled_next_states, "actions": next_actions}, role = "next_feature")
+                        z_phi, _, _ = self.frozen_phi_target({"states": sampled_states, 'drone_states': sampled_drone_states, "actions": sampled_actions}, role="feature")
+                        z_phi_next, _, _ = self.frozen_phi_target({"states": sampled_next_states, 'drone_states': sampled_next_drone_states, "actions": next_actions}, role = "next_feature")
                     else:
-                        z_phi, _, _ = self.frozen_phi({"states": sampled_states, "actions": sampled_actions}, role = "feature")
-                        z_phi_next, _, _ = self.frozen_phi({"states": sampled_next_states, "actions": next_actions}, role = "next_feature")
+                        z_phi, _, _ = self.frozen_phi({"states": sampled_states, 'drone_states': sampled_drone_states, "actions": sampled_actions}, role = "feature")
+                        z_phi_next, _, _ = self.frozen_phi({"states": sampled_next_states, 'drone_states': sampled_next_drone_states, "actions": next_actions}, role = "next_feature")
 
-                    target_q1_values, _, _ = self.target_critic_1.act({"states": sampled_next_states, "taken_actions": next_actions, "z_phi": z_phi_next}, role="target_critic_1")
-                    target_q2_values, _, _ = self.target_critic_2.act({"states": sampled_next_states, "taken_actions": next_actions, "z_phi": z_phi_next}, role="target_critic_2")
+                    target_q1_values, _, _ = self.target_critic_1.act({"states": sampled_next_states, "taken_actions": next_actions, "z_phi": z_phi_next, "task_states": sampled_next_task_states}, role="target_critic_1")
+                    target_q2_values, _, _ = self.target_critic_2.act({"states": sampled_next_states, "taken_actions": next_actions, "z_phi": z_phi_next, "task_states": sampled_next_task_states}, role="target_critic_2")
                     target_q_values = torch.min(target_q1_values, target_q2_values) - self._entropy_coefficient * next_log_prob
                     target_values = sampled_rewards + self._discount_factor * sampled_dones.logical_not() * target_q_values
 
                 # compute critic loss
-                critic_1_values, _, _ = self.critic_1.act({"states": sampled_states, "taken_actions": sampled_actions, "z_phi": z_phi}, role="critic_1")
-                critic_2_values, _, _ = self.critic_2.act({"states": sampled_states, "taken_actions": sampled_actions, "z_phi": z_phi}, role="critic_2")
+                critic_1_values, _, _ = self.critic_1.act({"states": sampled_states, "taken_actions": sampled_actions, "z_phi": z_phi, "task_states": sampled_task_states}, role="critic_1")
+                critic_2_values, _, _ = self.critic_2.act({"states": sampled_states, "taken_actions": sampled_actions, "z_phi": z_phi, "task_states": sampled_task_states}, role="critic_2")
 
                 critic_loss = (F.mse_loss(critic_1_values, target_values) + F.mse_loss(critic_2_values, target_values)) / 2
 
@@ -156,16 +166,18 @@ class CTRLSACAgent(SAC):
                 sampled_states, sampled_actions, sampled_rewards, sampled_next_states, sampled_dones = \
                     self.memory.sample(names=self._tensors_names, batch_size=self._batch_size)[0]
 
+            sampled_drone_states, sampled_task_states = self.decompose_state_vector(sampled_states)
+            sampled_next_drone_states, sampled_next_task_states = self.decompose_state_vector(sampled_next_states)
 
             # compute policy (actor) loss
             actions, log_prob, _ = self.policy.act({"states": sampled_states}, role="policy")
             if self.use_feature_target:
-                z_phi, _, _ = self.frozen_phi_target({"states": sampled_states, "actions": actions}, role="feature")
+                z_phi, _, _ = self.frozen_phi_target({"states": sampled_states, 'drone_states': sampled_drone_states, "actions": actions}, role="feature")
             else:
-                z_phi, _, _ = self.frozen_phi({"states": sampled_states, "actions": actions}, role = "feature")
+                z_phi, _, _ = self.frozen_phi({"states": sampled_states, 'drone_states': sampled_drone_states, "actions": actions}, role = "feature")
 
-            critic_1_values, _, _ = self.critic_1.act({"states": sampled_states, "taken_actions": actions, "z_phi": z_phi}, role="critic_1")
-            critic_2_values, _, _ = self.critic_2.act({"states": sampled_states, "taken_actions": actions, "z_phi": z_phi}, role="critic_2")
+            critic_1_values, _, _ = self.critic_1.act({"states": sampled_states, "taken_actions": actions, "z_phi": z_phi, "task_states": sampled_task_states}, role="critic_1")
+            critic_2_values, _, _ = self.critic_2.act({"states": sampled_states, "taken_actions": actions, "z_phi": z_phi, "task_states": sampled_task_states}, role="critic_2")
 
             policy_loss = (self._entropy_coefficient * log_prob - torch.min(critic_1_values, critic_2_values)).mean()
 
@@ -216,7 +228,9 @@ class CTRLSACAgent(SAC):
                 self.track_data("Target / Target (max)", torch.max(target_values).item())
                 self.track_data("Target / Target (min)", torch.min(target_values).item())
                 self.track_data("Target / Target (mean)", torch.mean(target_values).item())
-
+                
+                self.track_data("Info / Position weighting", 30)
+                
                 if self._learn_entropy:
                     self.track_data("Loss / Entropy loss", entropy_loss.item())
                     self.track_data("Coefficient / Entropy coefficient", self._entropy_coefficient.item())

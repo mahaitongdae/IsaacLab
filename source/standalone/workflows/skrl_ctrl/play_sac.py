@@ -11,7 +11,7 @@ from skrl.trainers.torch import SequentialTrainer, StepTrainer
 from skrl.utils import set_seed
 
 from networks.actor import DiagGaussianActor, StochasticActor
-from networks.critic import Critic, TestCritic
+from networks.critic import Critic, SACCritic
 from networks.feature import Phi, Mu, Theta
 
 from agents.ctrlsac_agent import CTRLSACAgent
@@ -27,12 +27,12 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-task = "Linear"
+task = "OOD"
 env = load_isaaclab_env(task_name=f"Isaac-Quadcopter-{task}-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
 
 
 video_kwargs = {
-    "video_folder": os.path.join(f"runs/torch/{task}", "videos", "eval"),
+    "video_folder": os.path.join(f"runs/torch/{task}/SAC", "videos", "eval"),
     "step_trigger": lambda step: step % 10000== 0,
     "video_length": 1000,
     "disable_logger": True,
@@ -61,63 +61,34 @@ feature_hidden_dim = 256
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
-models = {}
-models["policy"] = StochasticActor(observation_space = env.observation_space,
+sacmodels = {}
+sacmodels["policy"] = StochasticActor(observation_space = env.observation_space,
                                      action_space = env.action_space, 
                                      hidden_dim = actor_hidden_dim, 
                                      hidden_depth = actor_hidden_depth,
                                      log_std_bounds = [-5., 2.], 
                                      device = device)
 
-models["critic_1"] = TestCritic(observation_space = env.observation_space,
+sacmodels["critic_1"] = SACCritic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             device = device)
 
-models["critic_2"] = TestCritic(observation_space = env.observation_space,
+sacmodels["critic_2"] = SACCritic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             device = device)
 
-models["target_critic_1"] = TestCritic(observation_space = env.observation_space,
+sacmodels["target_critic_1"] = SACCritic(observation_space = env.observation_space,
                                    action_space = env.action_space, 
                                    feature_dim = feature_dim, 
                                    device = device)
 
-models["target_critic_2"] = TestCritic(observation_space = env.observation_space,
+sacmodels["target_critic_2"] = SACCritic(observation_space = env.observation_space,
                                 action_space = env.action_space, 
                                 feature_dim = feature_dim, 
                                 device = device)
 
-
-models["phi"] = Phi(observation_space = env.observation_space, 
-				    action_space = env.action_space, 
-				    feature_dim = feature_dim, 
-				    hidden_dim = feature_hidden_dim,
-                    device = device
-                )
-
-models["frozen_phi"] = Phi(observation_space = env.observation_space, 
-    				       action_space = env.action_space, 
-	    			       feature_dim = feature_dim, 
-		    	           hidden_dim = feature_hidden_dim,
-                           device = device
-                        )
-
-models["theta"] = Theta(
-    		        observation_space = env.observation_space,
-		            action_space = env.action_space, 
-		            feature_dim = feature_dim, 
-                    device = device
-                )
-
-models["mu"] = Mu(
-                observation_space = env.observation_space, 
-                action_space = env.action_space, 
-                feature_dim = feature_dim, 
-                hidden_dim = feature_hidden_dim,
-                device = device
-            )
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
@@ -137,8 +108,8 @@ cfg["initial_entropy_value"] = 1.0
 # cfg["state_preprocessor"] = RunningStandardScaler
 # cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 100000000
-cfg["experiment"]["checkpoint_interval"] = 80000000000000
+cfg["experiment"]["write_interval"] = 0
+cfg["experiment"]["checkpoint_interval"] = 0
 # cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
 cfg['use_feature_target'] = False
 cfg['extra_feature_steps'] = 0
@@ -147,7 +118,7 @@ cfg['target_update_period'] = 1
 
 
 agent = SAC(
-            models=models,
+            models=sacmodels,
             memory=memory,
             cfg=cfg,
             observation_space=env.observation_space,
@@ -155,10 +126,9 @@ agent = SAC(
             device=device
         )
 
-## Linear SAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Linear-Trajectory-Direct-v0/SAC/24-12-11_14-02-12-408306_SAC/checkpoints/best_agent.pt"
-## Multi SAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/SAC/24-12-11_16-28-19-830592_SAC/checkpoints/best_agent.pt"
-agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Linear-Trajectory-Direct-v0/SAC/24-12-11_14-02-12-408306_SAC/checkpoints/best_agent.pt")
-
+# /home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/SAC/24-12-21_17-31-07-920622_SAC/checkpoints/best_agent.pt
+agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/SAC/24-12-23_04-47-59-330902_SAC/checkpoints/best_agent.pt")
+# agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/SAC/25-01-01_10-44-37-569942_SAC/checkpoints/best_agent.pt")
 cfg_trainer = {"timesteps": experiment_length, "headless": True}
 env.eval_mode()
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)

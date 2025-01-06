@@ -28,7 +28,7 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
 task = "OOD"
-multitask = False
+multitask = True
 env = load_isaaclab_env(task_name=f"Isaac-Quadcopter-{task}-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
 
 
@@ -54,11 +54,20 @@ memory = RandomMemory(memory_size=experiment_length, num_envs=env.num_envs, devi
 
 # define hidden dimension
 actor_hidden_dim = 512
-actor_hidden_depth = 2
+actor_hidden_depth = 3
 
 # define feature dimension 
 feature_dim = 512
 feature_hidden_dim = 1024
+
+# define task feature dimensions
+cdim = 512
+
+# state dimensions
+task_state_dim = 60
+drone_state_dim = 13
+
+
 
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
@@ -74,54 +83,59 @@ models["policy"] = StochasticActor(observation_space = env.observation_space,
 models["critic_1"] = Critic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
-                            device = device, 
-                            multitask = multitask
-                            )
+                            task_state_dim = task_state_dim,
+                            cdim = cdim,
+                            multitask = multitask,
+                            device = device)
 
 models["critic_2"] = Critic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
-                            device = device, 
-                            multitask = multitask
-                            )
+                            task_state_dim = task_state_dim,
+                            cdim = cdim,
+                            multitask = multitask,
+                            device = device)
 
 models["target_critic_1"] = Critic(observation_space = env.observation_space,
                                    action_space = env.action_space, 
                                    feature_dim = feature_dim, 
-                                   device = device, 
-                                   multitask = multitask
-                                   )
+                                   task_state_dim = task_state_dim,
+                                   cdim = cdim,
+                                   multitask = multitask,
+                                   device = device)
 
 models["target_critic_2"] = Critic(observation_space = env.observation_space,
                                 action_space = env.action_space, 
                                 feature_dim = feature_dim, 
-                                device = device, 
-                                multitask = multitask
-                                )
+                                task_state_dim = task_state_dim,
+                                cdim = cdim,
+                                multitask = multitask,
+                                device = device)
 
 
 models["phi"] = Phi(observation_space = env.observation_space, 
 				    action_space = env.action_space, 
 				    feature_dim = feature_dim, 
 				    hidden_dim = feature_hidden_dim,
-                    device = device,
-                    multitask = multitask
+                    drone_state_dim = drone_state_dim,
+                    multitask = multitask,
+                    device = device
                 )
 
 models["frozen_phi"] = Phi(observation_space = env.observation_space, 
     				       action_space = env.action_space, 
 	    			       feature_dim = feature_dim, 
 		    	           hidden_dim = feature_hidden_dim,
-                           device = device,
-                           multitask = multitask
+                           drone_state_dim = drone_state_dim,
+                           multitask = multitask,
+                           device = device
                         )
 
 models["theta"] = Theta(
     		        observation_space = env.observation_space,
 		            action_space = env.action_space, 
 		            feature_dim = feature_dim, 
-                    device = device,
-                    multitask = multitask
+                    device = device
                 )
 
 models["mu"] = Mu(
@@ -129,8 +143,9 @@ models["mu"] = Mu(
                 action_space = env.action_space, 
                 feature_dim = feature_dim, 
                 hidden_dim = feature_hidden_dim,
-                device = device,
-                multitask = multitask
+                drone_state_dim = drone_state_dim,
+                multitask = multitask,
+                device = device
             )
 
 # configure and instantiate the agent (visit its documentation to see all the options)
@@ -153,8 +168,8 @@ cfg["learning_starts"] = 25e3
 # cfg["state_preprocessor"] = RunningStandardScaler
 # cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 1000000000000000
-cfg["experiment"]["checkpoint_interval"] = 10000000000000
+cfg["experiment"]["write_interval"] = 0
+cfg["experiment"]["checkpoint_interval"] = 0
 # cfg["experiment"]["directory"] = "runs/torch/QuadCopter-CTRL"
 cfg['use_feature_target'] = False
 cfg['extra_feature_steps'] = 1
@@ -172,9 +187,9 @@ agent = CTRLSACAgent(
             device=device
         )
 
-## Linear CTRLSAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Linear-Trajectory-Direct-v0/CTRL-SAC/1024-512-100000/24-12-10_19-59-27-142587_CTRLSACAgent/checkpoints/best_agent.pt"
 ## Multi CTRLSAC: "/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/CTRL-SAC/1024-512-100000/24-12-11_18-47-55-198869_CTRLSACAgent/checkpoints/best_agent.pt"
-agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/CTRL-SAC/1024-512-100000/24-12-15_19-57-01-146307_CTRLSACAgent/checkpoints/best_agent.pt")
+agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0/CTRL-SAC/True/24-12-24_00-52-44-433887_CTRLSACAgent/checkpoints/best_agent.pt")
+# agent.load("/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-Multi-Trajectory-Direct-v0-gsft/CTRL-SAC/True/25-01-01_06-54-41-699643_CTRLSACAgent/checkpoints/best_agent.pt")
 env.eval_mode()
 cfg_trainer = {"timesteps": experiment_length, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
@@ -183,7 +198,7 @@ trainer.eval()
 distance = agent.memory.tensors_view['states'][:, 13:16]
 
 folder = f"/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/{task}/"
-# print(np.savetxt(f"{folder}ctrl_agent_positions.txt", np.array(env.positions)))
+np.savetxt(f"{folder}ctrl_{multitask}_agent_positions.txt", np.array(env.positions))
 # print(np.savetxt(f"{folder}trajectory.txt", env._desired_trajectory_w[0, :].cpu().numpy()))
 
 print(np.abs(distance.cpu()).mean(axis=0))

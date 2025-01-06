@@ -5,33 +5,46 @@ import torch
 
 
 class Critic(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, feature_dim, device, multitask=False):
+    def __init__(self, observation_space, action_space, feature_dim, task_state_dim, cdim, device, multitask=False):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self)
         
         self.feature_dim = feature_dim
+        self.multitask = multitask
         
-        self.net = nn.Sequential(nn.Linear(feature_dim, 1024),
-                                 nn.ELU(),
-                                 nn.Linear(1024, 1))
 
         if multitask:
-            self.cnet = nn.Sequential(nn.Linear(taskstate_dim, 512),
+            self.net = nn.Sequential(nn.Linear(feature_dim + cdim, 1024),
+                            nn.ELU(),
+                            nn.Linear(1024, 1))
+
+            self.cnet = nn.Sequential(nn.Linear(task_state_dim, 512),
                                  nn.ELU(),
-                                 nn.Linear(512, cdims),
+                                 nn.Linear(512, cdim),
                                  nn.Sigmoid())
+
+        else:
+            self.net = nn.Sequential(nn.Linear(feature_dim, 1024),
+                            nn.ELU(),
+                            nn.Linear(1024, 1))
             
                                 
 
-    def compute_multitask(self, inputs, role):
-        task_feature = self.cnet(inputs['z_phi'])
+    def compute_multitask(self, inputs):
+        task_feature = self.cnet(inputs['task_states'])
+        ## concatenate task_feature and inputs['z_phi']
+        q = self.net(torch.cat([inputs['z_phi'], task_feature], dim=1))
+        return q
+    
+    def compute_standard(self, inputs):
+        return self.net(inputs['z_phi'])
 
     def compute(self, inputs, role):
-        q = self.net(inputs['z_phi'])
+        q = self.compute_multitask(inputs) if self.multitask else self.compute_standard(inputs)
         return q, {}
 
 
-class TestCritic(DeterministicMixin, Model):
+class SACCritic(DeterministicMixin, Model):
     def __init__(self, observation_space, action_space, feature_dim, device, clip_actions=False):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
