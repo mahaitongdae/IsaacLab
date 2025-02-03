@@ -53,7 +53,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     episode_length_s = 10.0
     decimation = 2
     num_actions = 4
-    num_observations = 12
+    num_observations = 13
     num_states = 0
     debug_vis = True
 
@@ -97,7 +97,8 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = -0.05
     ang_vel_reward_scale = -0.01
-    distance_to_goal_reward_scale = 15.0
+    distance_to_goal_reward_scale = -2.5
+    quat_reward_scale = -1.
 
 
 @configclass
@@ -205,6 +206,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "lin_vel",
                 "ang_vel",
                 "distance_to_goal",
+                "quat",
             ]
         }
         # Get specific body indices
@@ -215,6 +217,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
+        self.last_episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
     def _configure_gym_env_spaces(self):
         """Configure the action and observation spaces for the Gym environment."""
@@ -271,7 +274,7 @@ class QuadcopterEnv(DirectRLEnv):
             [
                 self._robot.data.root_lin_vel_b,
                 self._robot.data.root_ang_vel_b,
-                self._robot.data.projected_gravity_b,
+                self._robot.data.root_quat_w,
                 desired_pos_b,
             ],
             dim=-1,
@@ -283,13 +286,15 @@ class QuadcopterEnv(DirectRLEnv):
         lin_vel = torch.sum(torch.square(self._robot.data.root_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_ang_vel_b), dim=1)
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_pos_w, dim=1)
-        distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
+        quat = torch.linalg.norm(self._robot.data.root_quat_w - torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=self.device), dim=1)
+        # distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
         rewards = {
-            "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
-            "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
-            "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+            "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale, # * self.step_dt,
+            "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale, # * self.step_dt,
+            "distance_to_goal": distance_to_goal * self.cfg.distance_to_goal_reward_scale, # * self.step_dt,
+            "quat": quat * self.cfg.quat_reward_scale, #  * self.step_dt
         }
-        reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        reward = 0.1 * (2 - torch.sum(torch.stack(list(rewards.values())), dim=0))
         # Logging
         for key, value in rewards.items():
             self._episode_sums[key] += value
@@ -316,10 +321,17 @@ class QuadcopterEnv(DirectRLEnv):
             self._episode_sums[key][env_ids] = 0.0
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
+
+        
         extras = dict()
         extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
+        
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
         extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
+
+        # log epsiode length
+        self.last_episode_length_buf[env_ids] = self.episode_length_buf[env_ids]
+        extras["Episode_Length"] = self.last_episode_length_buf.clone()
         self.extras["log"].update(extras)
 
         self._robot.reset(env_ids)
@@ -539,7 +551,9 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
         window_vel = []
         for i in range(self.num_envs):
             desired_trajectory_window_b, _ = subtract_frame_transforms(
-                self._robot.data.root_state_w[i, :3].repeat(self.cfg.window, 1), self._robot.data.root_state_w[i, 3:7].repeat(self.cfg.window, 1), self._desired_trajectory_w[i, self.episode_timesteps[i]: self.episode_timesteps[i] + self.cfg.window]
+                self._robot.data.root_state_w[i, :3].repeat(self.cfg.window, 1),
+                self._robot.data.root_state_w[i, 3:7].repeat(self.cfg.window, 1),
+                self._desired_trajectory_w[i, self.episode_timesteps[i]: self.episode_timesteps[i] + self.cfg.window]
             )
             desired_trajectory_vel_window_w = self._desired_trajectory_vel_w[i, self.episode_timesteps[i]: self.episode_timesteps[i] + self.cfg.window, :]
             window_wp.append(desired_trajectory_window_b)
@@ -606,8 +620,8 @@ class QuadcopterTrajectoryEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 2.0)
-        if died.sum() > 0:
-            print(self.episode_timesteps[died])
+        # if died.sum() > 0:
+        #     print(self.episode_timesteps[died])
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
