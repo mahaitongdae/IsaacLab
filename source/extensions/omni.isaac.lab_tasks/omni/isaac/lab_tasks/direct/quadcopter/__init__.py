@@ -72,6 +72,36 @@ gym.register(
         "env_cfg_entry_point": QuadcopterTrajectoryLegendreTrainingEnvCfg
     },
 )
+
+gym.register(
+    id="Isaac-Quadcopter-legtrain-active-bo-Trajectory-Direct-v0",
+    entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": QuadcopterTrajectoryTrainingActiveBOTaskEnvCfg
+    },
+)
+
+gym.register(
+    id="Isaac-Quadcopter-legtrain-active-eigen-Trajectory-Direct-v0",
+    entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": QuadcopterTrajectoryTrainingActiveEigenTaskEnvCfg
+    },
+)
+
+
+gym.register(
+    id="Isaac-Quadcopter-legtrain-random-Trajectory-Direct-v0",
+    entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": QuadcopterTrajectoryTrainingRandomTaskEnvCfg
+    },
+)
+
+
 gym.register(
     id="Isaac-Quadcopter-legeval-Trajectory-Direct-v0",
     entry_point="omni.isaac.lab_tasks.direct.quadcopter:QuadcopterTrajectoryEnv",

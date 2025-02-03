@@ -22,13 +22,15 @@ import numpy as np
 
 import argparse
 from omni.isaac.lab.app import AppLauncher
+from pathlib import Path
+
 
 parser = argparse.ArgumentParser(description="Run the eval script with customizable parameters.")
 # Add arguments
 parser.add_argument("--experiment", type=str, default="OOD", choices=["legeval", "legood", "OOD", "legtrain"], help="Specify the task name (default: OOD).")
 parser.add_argument("--agent_type", type=str, default="CTRLSAC", choices=["CTRLSAC", "SAC"], help="Specify the agent type (default: CTRLSAC).")
-parser.add_argument("--ckpt", type=str, default="best_agent", help="Specify the checkpoint name (default: best_agent).")
-
+parser.add_argument("--ckpt", type=str, default="-1", help="Specify the checkpoint name (default: best_agent).")
+parser.add_argument("--folder", type=str)
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # Parse arguments
@@ -36,7 +38,7 @@ args, _ = parser.parse_known_args()
 task = args.experiment
 agent_type = args.agent_type
 ckpt = args.ckpt
-
+folder = args.folder
 # seed for reproducibility
 set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
@@ -44,7 +46,7 @@ set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
 experiments = {
-    "legeval": [50000, False],
+    "legeval": [515, False],
     "legood": [500, True],
     "OOD": [500, True],
     "legtrain": [3000, True]
@@ -54,7 +56,7 @@ experiments = {
 
 experiment_length = experiments[task][0]
 record_video = experiments[task][1] 
-output_dir = f"runs/experiments/{task}/{agent_type}-{ckpt}"
+output_dir = f"runs/experiments/{task}/{agent_type}/{folder.split('/')[-4]}"
 
 video_kwargs = {
     "video_folder": os.path.join(output_dir, "videos"),
@@ -64,7 +66,7 @@ video_kwargs = {
 }
 print("[INFO] Recording videos during training.")
 print_dict(video_kwargs, nesting=4)
-env = load_isaaclab_env(task_name=f"Isaac-Quadcopter-{task}-Trajectory-Direct-v0", num_envs=1, cli_args=cli_args)
+env = load_isaaclab_env(task_name=f"Isaac-Quadcopter-{task}-Trajectory-Direct-v0", num_envs=100, cli_args=cli_args)
 
 if record_video: env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
@@ -75,8 +77,7 @@ device = env.device
 
 
 # instantiate a memory as experience replay
-sacmemory = RandomMemory(memory_size=experiment_length, num_envs=env.num_envs, device=device)
-ctrlmemory = RandomMemory(memory_size=experiment_length, num_envs=env.num_envs, device=device)
+memory = RandomMemory(memory_size=experiment_length, num_envs=env.num_envs, device=device)
 
 # define hidden dimension
 actor_hidden_dim = 256
@@ -90,50 +91,59 @@ feature_hidden_dim = 1024
 cdim = 512
 
 # state dimensions
-task_state_dim = 60
+task_state_dim = 67
 drone_state_dim = 13
 multitask=True
+
+
+agentclasses = {
+    "CTRLSAC": CTRLSACAgent,
+    "SAC": SAC
+}
+
+
 
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
-sacmodels = {}
-sacmodels["policy"] = StochasticActor(observation_space = env.observation_space,
+models = {}
+models["SAC"] = {}
+models["SAC"]["policy"] = StochasticActor(observation_space = env.observation_space,
                                      action_space = env.action_space, 
                                      hidden_dim = actor_hidden_dim, 
                                      hidden_depth = actor_hidden_depth,
                                      log_std_bounds = [-5., 2.], 
                                      device = device)
 
-sacmodels["critic_1"] = SACCritic(observation_space = env.observation_space,
+models["SAC"]["critic_1"] = SACCritic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             device = device)
 
-sacmodels["critic_2"] = SACCritic(observation_space = env.observation_space,
+models["SAC"]["critic_2"] = SACCritic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             device = device)
 
-sacmodels["target_critic_1"] = SACCritic(observation_space = env.observation_space,
+models["SAC"]["target_critic_1"] = SACCritic(observation_space = env.observation_space,
                                    action_space = env.action_space, 
                                    feature_dim = feature_dim, 
                                    device = device)
 
-sacmodels["target_critic_2"] = SACCritic(observation_space = env.observation_space,
+models["SAC"]["target_critic_2"] = SACCritic(observation_space = env.observation_space,
                                 action_space = env.action_space, 
                                 feature_dim = feature_dim, 
                                 device = device)
 
-ctrlmodels = {}
-ctrlmodels["policy"] = StochasticActor(observation_space = env.observation_space,
+models["CTRLSAC"] = {}
+models["CTRLSAC"]["policy"] = StochasticActor(observation_space = env.observation_space,
                                      action_space = env.action_space, 
                                      hidden_dim = actor_hidden_dim, 
                                      hidden_depth = actor_hidden_depth,
                                      log_std_bounds = [-5., 2.], 
                                      device = device)
 
-ctrlmodels["critic_1"] = Critic(observation_space = env.observation_space,
+models["CTRLSAC"]["critic_1"] = Critic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             task_state_dim = task_state_dim,
@@ -141,7 +151,7 @@ ctrlmodels["critic_1"] = Critic(observation_space = env.observation_space,
                             multitask = multitask,
                             device = device)
 
-ctrlmodels["critic_2"] = Critic(observation_space = env.observation_space,
+models["CTRLSAC"]["critic_2"] = Critic(observation_space = env.observation_space,
                             action_space = env.action_space, 
                             feature_dim = feature_dim, 
                             task_state_dim = task_state_dim,
@@ -149,7 +159,7 @@ ctrlmodels["critic_2"] = Critic(observation_space = env.observation_space,
                             multitask = multitask,
                             device = device)
 
-ctrlmodels["target_critic_1"] = Critic(observation_space = env.observation_space,
+models["CTRLSAC"]["target_critic_1"] = Critic(observation_space = env.observation_space,
                                    action_space = env.action_space, 
                                    feature_dim = feature_dim, 
                                    task_state_dim = task_state_dim,
@@ -157,7 +167,7 @@ ctrlmodels["target_critic_1"] = Critic(observation_space = env.observation_space
                                    multitask = multitask,
                                    device = device)
 
-ctrlmodels["target_critic_2"] = Critic(observation_space = env.observation_space,
+models["CTRLSAC"]["target_critic_2"] = Critic(observation_space = env.observation_space,
                                 action_space = env.action_space, 
                                 feature_dim = feature_dim, 
                                 task_state_dim = task_state_dim,
@@ -166,7 +176,7 @@ ctrlmodels["target_critic_2"] = Critic(observation_space = env.observation_space
                                 device = device)
 
 
-ctrlmodels["phi"] = Phi(observation_space = env.observation_space, 
+models["CTRLSAC"]["phi"] = Phi(observation_space = env.observation_space, 
 				    action_space = env.action_space, 
 				    feature_dim = feature_dim, 
 				    hidden_dim = feature_hidden_dim,
@@ -175,7 +185,7 @@ ctrlmodels["phi"] = Phi(observation_space = env.observation_space,
                     device = device
                 )
 
-ctrlmodels["frozen_phi"] = Phi(observation_space = env.observation_space, 
+models["CTRLSAC"]["frozen_phi"] = Phi(observation_space = env.observation_space, 
     				       action_space = env.action_space, 
 	    			       feature_dim = feature_dim, 
 		    	           hidden_dim = feature_hidden_dim,
@@ -184,14 +194,14 @@ ctrlmodels["frozen_phi"] = Phi(observation_space = env.observation_space,
                            device = device
                         )
 
-ctrlmodels["theta"] = Theta(
+models["CTRLSAC"]["theta"] = Theta(
     		        observation_space = env.observation_space,
 		            action_space = env.action_space, 
 		            feature_dim = feature_dim, 
                     device = device
                 )
 
-ctrlmodels["mu"] = Mu(
+models["CTRLSAC"]["mu"] = Mu(
                 observation_space = env.observation_space, 
                 action_space = env.action_space, 
                 feature_dim = feature_dim, 
@@ -207,7 +217,7 @@ ctrlmodels["mu"] = Mu(
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
 cfg = SAC_DEFAULT_CONFIG.copy()
 cfg["gradient_steps"] = 1
-cfg["batch_size"] = 1024
+cfg["batch_size"] = 256
 cfg["discount_factor"] = 0.99
 cfg["polyak"] = 0.005
 cfg["actor_learning_rate"] = 1e-4
@@ -229,44 +239,24 @@ cfg['eval'] = True
 cfg['alpha'] = None
 
 
+AgentClass = agentclasses[agent_type]
+
+agent = AgentClass(
+    models=models[agent_type],
+    memory=memory,
+    cfg=cfg,
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    device=device
+)
 
 
-sacagent = SAC(
-            models=sacmodels,
-            memory=sacmemory,
-            cfg=cfg,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            device=device
-        )
 
-ctrlagent = CTRLSACAgent(
-            models=ctrlmodels,
-            memory=ctrlmemory,
-            cfg=cfg,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            device=device
-        )
-
-
-ctrlagent.load(f"/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-legtrain-Trajectory-Direct-v0/CTRL-SAC/True/25-01-05_20-26-49-392901_CTRLSACAgent/checkpoints/{ckpt}.pt")
-sacagent.load(f"/home/naliseas-workstation/Documents/anaveen/IsaacLab/runs/torch/Isaac-Quadcopter-legtrain-Trajectory-Direct-v0/SAC/25-01-06_10-11-53-625502_SAC/checkpoints/{ckpt}.pt")
-
-agents = {
-            "SAC": sacagent, 
-            "CTRLSAC": ctrlagent
-          }
-
+agent.load(f"{folder}/{ckpt}")
 cfg_trainer = {"timesteps": experiment_length, "headless": True}
-
-
-agent = agents[agent_type]
 env.eval_mode()
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 trainer.eval()
-
 os.makedirs(output_dir, exist_ok=True)
-torch.save(env.results, f"{output_dir}/results.pth")
-
+torch.save(env.results, f"{output_dir}/{ckpt[:-3]}.pth")
 

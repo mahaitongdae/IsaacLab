@@ -3,7 +3,7 @@ import torch.nn as nn
 
 # import the skrl components to build the RL system
 from skrl.agents.torch.sac import SAC, SAC_DEFAULT_CONFIG
-from skrl.envs.loaders.torch import load_isaaclab_env
+from utils.utils import load_isaaclab_env
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
@@ -20,14 +20,27 @@ import os
 import gymnasium as gym
 # import gym
 import numpy as np
+import argparse
+from omni.isaac.lab.app import AppLauncher
 
 # seed for reproducibility
-set_seed(42)  # e.g. `set_seed(42)` for fixed seed
 
+
+parser = argparse.ArgumentParser(description="Run the eval script with customizable parameters.")
+# Add arguments
+parser.add_argument("--env_version", type=str, default="legtrain-active-bo")
+
+# append AppLauncher cli args
+AppLauncher.add_app_launcher_args(parser)
+# Parse arguments
+args, _ = parser.parse_known_args()
 
 cli_args = ["--video"]
 # load and wrap the Isaac Gym environment
-task_version = "legtrain"
+task_version = args.env_version
+print(task_version)
+set_seed(42)  # e.g. `set_seed(42)` for fixed seed
+
 task_name = f"Isaac-Quadcopter-{task_version}-Trajectory-Direct-v0"
 env = load_isaaclab_env(task_name = task_name, num_envs=32, cli_args=cli_args)
 
@@ -161,8 +174,8 @@ cfg["actor_learning_rate"] = 1e-4
 cfg["critic_learning_rate"] = 1e-4
 cfg["weight_decay"] = 0
 cfg["feature_learning_rate"] = 1e-4
-cfg["random_timesteps"] = 25e3
-cfg["learning_starts"] = 25e3
+cfg["random_timesteps"] = 12e3
+cfg["learning_starts"] = 12e3
 cfg["grad_norm_clip"] = 1.0
 cfg["learn_entropy"] = True
 cfg["entropy_learning_rate"] = 1e-5
@@ -186,7 +199,7 @@ agent = CTRLSACAgent(
             action_space=env.action_space,
             device=device
         )
-cfg_trainer = {"timesteps": int(1e6), "headless": True, "environment_info": "log"}
+cfg_trainer = {"timesteps": int(5e5), "headless": True, "environment_info": "log"}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # train the agent(s)

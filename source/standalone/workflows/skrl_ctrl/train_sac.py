@@ -92,12 +92,6 @@ memory = RandomMemory(memory_size=int(1e5), num_envs=env.num_envs, device=device
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
 models = {}
 models["policy"] = StochasticActor(env.observation_space, env.action_space, device)
-# models["policy"] = StochasticActor(observation_space = env.observation_space,
-#                                      action_space = env.action_space, 
-#                                      hidden_dim = actor_hidden_dim, 
-#                                      hidden_depth = actor_hidden_depth,
-#                                      log_std_bounds = [-5., 2.], 
-#                                      device = device)
 models["critic_1"] = Critic(env.observation_space, env.action_space, device)
 models["critic_2"] = Critic(env.observation_space, env.action_space, device)
 models["target_critic_1"] = Critic(env.observation_space, env.action_space, device)

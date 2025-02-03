@@ -4,13 +4,21 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 from tqdm import tqdm
+from sklearn.decomposition import PCA
+from numpy.polynomial.legendre import Legendre
+from numpy import polynomial as P
 
+
+def task_space(t):
+    mag = np.linalg.norm(t)
+    t = t/mag
+    return np.append(t, mag)
 
 parser = argparse.ArgumentParser(description="Run the analysis script with customizable parameters.")
 # Add arguments
 parser.add_argument("--experiment", type=str, default="legeval", choices=["legeval", "legood", "OOD", "legtrain"], help="Specify the experiment name (default: OOD).")
 parser.add_argument("--num_experiments", type=int, default=1, help="Specify the number of experiments")
-
+parser.add_argument("--generate_figure", type=bool, default=True, help="Specify whether to generate figure")
 args = parser.parse_args()
 
 output_dir = f"runs/experiments/{args.experiment}"
@@ -32,15 +40,19 @@ fig, axes = plt.subplots(rows, cols, figsize=figsize)
 axes = axes.flatten() if N > 1 else [axes]
 
 lines = []
-labels = [] 
+labels = []
+poly_crashed = []
+poly_survived = [] 
 for agent in agents:
     agent_type = agent.split('-')[0]
     agent_results = torch.load(f"{output_dir}/{agent}/results.pth")
+    print(f"NUM_ENVS: {len(agent_results.keys())}")
+    assert len(agent_results.keys()) >= N 
     MSE = []
     for trial in tqdm(range(1, N + 1)):
-        gt = agent_results[trial]['trajectory'][0].cpu().numpy()
-        time_alive = agent_results[trial]['time_alive'][0]
-        pose = agent_results[trial]['pose'][0].cpu().numpy()
+        gt = agent_results[trial]['trajectory'].cpu().numpy()
+        time_alive = agent_results[trial]['time_alive']
+        pose = agent_results[trial]['pose'].cpu().numpy()
         axes[trial - 1].plot(gt[:, 0], gt[:, 1], color='black', linewidth=2)
         line, = axes[trial - 1].plot(pose[:time_alive, 0], pose[:time_alive, 1], label=agent_type)
         axes[trial - 1].grid(True)
@@ -50,14 +62,20 @@ for agent in agents:
                 spine.set_edgecolor('red')  # Set the box color
                 spine.set_linewidth(4)
             axes[trial - 1].set_facecolor((1, 0, 0, 0.1))
+            
+            if agent_type == 'CTRLSAC':
+                poly_crashed.append(task_space(agent_results[trial]['trajectory_legendre'].coef))
         else:
             MSE.append(agent_results[trial]['MSE'].cpu().numpy())
+            print(agent_results[trial]['MSE'].cpu().numpy())
+            if agent_type == 'CTRLSAC':
+                poly_survived.append(task_space(agent_results[trial]['trajectory_legendre'].coef))
         
         if trial == 1:    
             lines.append(line)
             labels.append(agent_type)
     MSE = np.array(MSE)
-    print(f"{agent_type}_MSE: {MSE.mean(axis=0)}")
+    print(f"{agent_type}_MSE: {MSE.mean(axis=1)}")
     
 for i in range(N, len(axes)):
     axes[i].axis("off")
@@ -71,4 +89,7 @@ fig.legend(
     frameon=True  # Add a border around the legend
 )
 plt.tight_layout()
-plt.savefig(f"{output_dir}/plot.png")
+if args.generate_figure:
+    plt.savefig(f"{output_dir}/plot.png")
+
+

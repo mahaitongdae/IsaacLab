@@ -229,7 +229,6 @@ class CTRLSACAgent(SAC):
                 self.track_data("Target / Target (min)", torch.min(target_values).item())
                 self.track_data("Target / Target (mean)", torch.mean(target_values).item())
                 
-                self.track_data("Info / Position weighting", 30)
                 
                 if self._learn_entropy:
                     self.track_data("Loss / Entropy loss", entropy_loss.item())
