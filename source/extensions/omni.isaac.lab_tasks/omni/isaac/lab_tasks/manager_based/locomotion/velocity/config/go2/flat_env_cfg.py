@@ -13,6 +13,8 @@ class UnitreeGo2FlatEnvCfg(UnitreeGo2RoughEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
+        
+        self.episode_length_s = 8.0
 
         # override rewards
         self.rewards.flat_orientation_l2.weight = -2.5

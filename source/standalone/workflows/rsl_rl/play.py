@@ -21,7 +21,11 @@ parser.add_argument("--video_length", type=int, default=200, help="Length of the
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
+<<<<<<< HEAD
 parser.add_argument("--num_envs", type=int, default=4000, help="Number of environments to simulate.")
+=======
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
+>>>>>>> 577979b936df6cb13e01631cdf69969ef4cd9987
 parser.add_argument("--task", type=str, default='Isaac-Velocity-Flat-Unitree-Go2-v0', help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 # append RSL-RL cli arguments
@@ -72,7 +76,7 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.8, 0.8), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0), heading=(0.0, 0.0) # (-math.pi, math.pi)
+            lin_vel_x=(0.5, 0.5), lin_vel_y=(0.0, 0.0), ang_vel_z=(-1.0, 1.0), heading=(0.0, 0.0) # (-math.pi, math.pi)
         ),
     )
 
