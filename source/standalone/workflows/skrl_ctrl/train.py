@@ -28,7 +28,7 @@ from omni.isaac.lab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Run the eval script with customizable parameters.")
 # Add arguments
-parser.add_argument("--env_version", type=str, default="legtrain-active-bo")
+parser.add_argument("--env_version", type=str, default="legtrain-random") # legtrain-random legtrain-active-bo
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -47,17 +47,17 @@ env = load_isaaclab_env(task_name = task_name, num_envs=32, cli_args=cli_args)
 # using multitask parameterization
 multitask = True
 
-video_kwargs = {
-    "video_folder": os.path.join(f"runs/torch/{task_version}/", "videos", "train", "CTRLSAC"),
-    "step_trigger": lambda step: step % 10000== 0,
-    "video_length": 400,
-    "disable_logger": True,
-}
-print("[INFO] Recording videos during training.")
-print_dict(video_kwargs, nesting=4)
-env = gym.wrappers.RecordVideo(env, **video_kwargs)
+# video_kwargs = {
+#     "video_folder": os.path.join(f"runs/torch/{task_version}/", "videos", "train", "CTRLSAC"),
+#     "step_trigger": lambda step: step % 10000== 0,
+#     "video_length": 400,
+#     "disable_logger": True,
+# }
+# print("[INFO] Recording videos during training.")
+# print_dict(video_kwargs, nesting=4)
+# env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
-env = wrap_env(env)
+# env = wrap_env(env)
 
 
 device = env.device
@@ -170,10 +170,10 @@ cfg["gradient_steps"] = 1
 cfg["batch_size"] = 256
 cfg["discount_factor"] = 0.99
 cfg["polyak"] = 0.005
-cfg["actor_learning_rate"] = 1e-4
-cfg["critic_learning_rate"] = 1e-4
+cfg["actor_learning_rate"] = 3e-4
+cfg["critic_learning_rate"] = 3e-4
 cfg["weight_decay"] = 0
-cfg["feature_learning_rate"] = 1e-4
+cfg["feature_learning_rate"] = 3e-4
 cfg["random_timesteps"] = 12e3
 cfg["learning_starts"] = 12e3
 cfg["grad_norm_clip"] = 1.0
@@ -199,7 +199,7 @@ agent = CTRLSACAgent(
             action_space=env.action_space,
             device=device
         )
-cfg_trainer = {"timesteps": int(5e5), "headless": True, "environment_info": "log"}
+cfg_trainer = {"timesteps": int(1e5), "headless": True, "environment_info": "log"}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # train the agent(s)
